@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% set page = 'pay' %}
+{% block title %}Terminal Pembayaran — VeinPay{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-hero">
+    <div class="page-hero-title">💳 Terminal Pembayaran</div>
+    <div class="page-hero-sub">Masukkan nominal, lalu scan telapak tangan</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Nominal Pembayaran</div>
+    <div class="amount-display">
+      <div class="amount-label">Total Tagihan</div>
+      <div class="amount-value" id="displayAmount">
+        <span class="currency">Rp</span><span id="amountText">0</span>
+      </div>
+    </div>
+    <div class="keypad" id="keypad">
+      <button class="key" onclick="keyPress('1')">1</button>
+      <button class="key" onclick="keyPress('2')">2</button>
+      <button class="key" onclick="keyPress('3')">3</button>
+      <button class="key" onclick="keyPress('4')">4</button>
+      <button class="key" onclick="keyPress('5')">5</button>
+      <button class="key" onclick="keyPress('6')">6</button>
+      <button class="key" onclick="keyPress('7')">7</button>
+      <button class="key" onclick="keyPress('8')">8</button>
+      <button class="key" onclick="keyPress('9')">9</button>
+      <button class="key zero" onclick="keyPress('000')">000</button>
+      <button class="key" onclick="keyPress('0')">0</button>
+      <button class="key del" onclick="keyDel()">⌫</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;">
+      <button class="key" style="font-size:13px;" onclick="setQuick(10000)">10rb</button>
+      <button class="key" style="font-size:13px;" onclick="setQuick(25000)">25rb</button>
+      <button class="key" style="font-size:13px;" onclick="setQuick(50000)">50rb</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Scan Telapak Tangan</div>
+    <div class="stream-container" id="streamWrap">
+      <img src="/video_feed" alt="kamera">
+      <div class="scan-ring" id="scanRing"></div>
+      <div class="scan-overlay" id="scanOverlay">Posisikan telapak tangan</div>
+    </div>
+    <button class="btn btn-primary" id="btnPay" onclick="doPayment()">🖐 Verifikasi &amp; Bayar</button>
+  </div>
+
+  <div class="result-banner" id="resultBanner">
+    <div class="result-title" id="resultTitle"></div>
+    <div id="resultBody"></div>
+    <div class="result-sub" id="resultSub"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let amountVal = 0;
+
+function keyPress(k) {
+  let s = String(amountVal) + k;
+  amountVal = Math.min(parseInt(s) || 0, 9999999);
+  updateDisplay();
+}
+function keyDel() {
+  amountVal = Math.floor(amountVal / 10);
+  updateDisplay();
+}
+function setQuick(v) { amountVal = v; updateDisplay(); }
+function updateDisplay() {
+  document.getElementById('amountText').textContent = amountVal.toLocaleString('id-ID');
+}
+
+async function doPayment() {
+  if (amountVal <= 0) { alert('Masukkan nominal dulu.'); return; }
+
+  const btn = document.getElementById('btnPay');
+  const banner = document.getElementById('resultBanner');
+  btn.disabled = true;
+  banner.className = 'result-banner';
+
+  setScanRing(document.getElementById('streamWrap'), 'scanning', 'Mengambil frame...');
+
+  try {
+    const res = await fetch('/verify_payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jumlah: amountVal })
+    });
+    const data = await res.json();
+
+    if (data.status === 'sukses') {
+      setScanRing(document.getElementById('streamWrap'), 'success', '✓ Terverifikasi');
+      showBanner('success',
+        '✅ Pembayaran Berhasil',
+        `Atas nama: <strong>${data.nama}</strong> &nbsp;|&nbsp; ${formatRupiah(data.jumlah)}`,
+        `Sisa saldo: ${formatRupiah(data.saldo_baru)} &nbsp;•&nbsp; Jarak: ${data.jarak_final?.toFixed(4)} &nbsp;•&nbsp; Margin: ${data.margin?.toFixed(4)}${buildFrameDetail(data.detail_per_frame)}`
+      );
+      amountVal = 0; updateDisplay();
+    } else if (data.status === 'saldo_tidak_cukup') {
+      setScanRing(document.getElementById('streamWrap'), 'error', '✗ Saldo tidak cukup');
+      showBanner('warning', '⚠️ Saldo Tidak Cukup', data.message,
+        `Jarak: ${data.jarak_final?.toFixed(4)}${buildFrameDetail(data.detail_per_frame)}`);
+    } else if (data.status === 'gagal_verifikasi') {
+      setScanRing(document.getElementById('streamWrap'), 'error', '✗ Tidak dikenali');
+      const alasan = data.alasan_tolak ? `<br><small>${data.alasan_tolak}</small>` : '';
+      showBanner('error', '❌ Verifikasi Gagal',
+        'Telapak tangan tidak dikenali. Silakan coba lagi.' + alasan,
+        `Jarak: ${data.jarak_final?.toFixed(4)} &nbsp;•&nbsp; Margin: ${data.margin?.toFixed(4)}${buildFrameDetail(data.detail_per_frame)}`
+      );
+    } else {
+      setScanRing(document.getElementById('streamWrap'), 'error', '✗ Error');
+      showBanner('error', '❌ Error', data.message || 'Terjadi kesalahan.', '');
+    }
+  } catch(e) {
+    setScanRing(document.getElementById('streamWrap'), 'error', '✗ Koneksi gagal');
+    showBanner('error', '❌ Koneksi Gagal', 'Tidak bisa menghubungi server.', '');
+  }
+
+  setTimeout(() => setScanRing(document.getElementById('streamWrap'), '', 'Posisikan telapak tangan'), 3000);
+  btn.disabled = false;
+}
+
+function showBanner(type, title, body, sub) {
+  const b = document.getElementById('resultBanner');
+  b.className = 'result-banner show ' + type;
+  document.getElementById('resultTitle').textContent = title;
+  document.getElementById('resultBody').innerHTML = body;
+  document.getElementById('resultSub').innerHTML = sub;
+}
+</script>
+{% endblock %}

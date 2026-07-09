@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% set page = 'history' %}
+{% block title %}Riwayat — VeinPay{% endblock %}
+{% block content %}
+<div class="page-wide">
+  <div class="page-hero">
+    <div class="page-hero-title">📜 Riwayat Transaksi</div>
+    <div class="page-hero-sub">Log semua percobaan pembayaran & top-up</div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:0;">Transaksi Terakhir</div>
+      <button onclick="loadHistory()" style="background:none;border:none;color:#1a56db;font-size:13px;font-weight:600;cursor:pointer;">🔄 Refresh</button>
+    </div>
+    <div id="tableWrap"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+async function loadHistory() {
+  const res = await fetch('/riwayat');
+  const rows = await res.json();
+  const wrap = document.getElementById('tableWrap');
+
+  if (rows.length === 0) {
+    wrap.innerHTML = '<div class="empty">Belum ada transaksi.</div>';
+    return;
+  }
+
+  let html = `<table class="tx-table">
+    <tr>
+      <th>Waktu</th><th>Nama</th><th>Jumlah</th><th>Saldo Akhir</th><th>Status</th><th>Jarak</th>
+    </tr>`;
+
+  rows.forEach(r => {
+    const jumlah = r.jumlah ? formatRupiah(r.jumlah) : '—';
+    const saldo  = r.saldo_setelah !== null && r.saldo_setelah !== undefined ? formatRupiah(r.saldo_setelah) : '—';
+    const jarak  = r.jarak_embedding !== null && r.jarak_embedding !== undefined ? Number(r.jarak_embedding).toFixed(4) : '—';
+    const waktu  = r.waktu ? r.waktu.replace('T', ' ').substring(0, 19) : '—';
+    html += `<tr>
+      <td style="white-space:nowrap;font-size:12px;">${waktu}</td>
+      <td class="tx-name">${r.nama || '—'}</td>
+      <td>${jumlah}</td>
+      <td>${saldo}</td>
+      <td><span class="status-badge ${r.status}">${r.status}</span></td>
+      <td style="font-size:12px;font-family:monospace;">${jarak}</td>
+    </tr>`;
+  });
+
+  html += '</table>';
+  wrap.innerHTML = html;
+}
+
+loadHistory();
+</script>
+{% endblock %}

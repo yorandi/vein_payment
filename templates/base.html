@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}VeinPay{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy:    #0d1b3e;
+    --navy2:   #162347;
+    --blue:    #1a56db;
+    --blue-lt: #3b82f6;
+    --green:   #059669;
+    --green-lt:#d1fae5;
+    --red:     #dc2626;
+    --red-lt:  #fee2e2;
+    --amber:   #d97706;
+    --amber-lt:#fef3c7;
+    --white:   #ffffff;
+    --gray50:  #f9fafb;
+    --gray100: #f3f4f6;
+    --gray200: #e5e7eb;
+    --gray400: #9ca3af;
+    --gray600: #4b5563;
+    --gray800: #1f2937;
+    --shadow:  0 1px 3px rgba(0,0,0,.1), 0 4px 16px rgba(0,0,0,.06);
+    --shadow-lg: 0 4px 6px rgba(0,0,0,.07), 0 12px 40px rgba(0,0,0,.12);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--gray50);
+    color: var(--gray800);
+    min-height: 100vh;
+  }
+
+  /* Topbar */
+  .topbar {
+    background: var(--navy);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+  }
+  .brand-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--blue), #60a5fa);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .brand-name {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: -0.3px;
+  }
+  .brand-name span { color: #60a5fa; }
+  .topbar-nav { display: flex; gap: 4px; }
+  .nav-link {
+    color: #94a3b8;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all .15s;
+  }
+  .nav-link:hover { color: var(--white); background: rgba(255,255,255,.08); }
+  .nav-link.active { color: var(--white); background: rgba(255,255,255,.12); }
+
+  /* Layout */
+  .page { max-width: 480px; margin: 0 auto; padding: 28px 16px 60px; }
+  .page-wide { max-width: 600px; margin: 0 auto; padding: 28px 16px 60px; }
+
+  /* Cards */
+  .card {
+    background: var(--white);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: var(--gray400);
+    margin-bottom: 16px;
+  }
+
+  /* Live stream + scan ring */
+  .stream-container {
+    position: relative;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #000;
+    margin-bottom: 20px;
+    aspect-ratio: 16/9;
+  }
+  .stream-container img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .scan-ring {
+    position: absolute;
+    inset: 0;
+    border: 3px solid transparent;
+    border-radius: 14px;
+    pointer-events: none;
+    transition: border-color .3s;
+  }
+  .scan-ring.scanning {
+    border-color: var(--blue-lt);
+    animation: scanpulse 1.2s ease-in-out infinite;
+  }
+  .scan-ring.success { border-color: var(--green); }
+  .scan-ring.error   { border-color: var(--red); }
+  @keyframes scanpulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(59,130,246,.4); }
+    50%       { opacity: .7; box-shadow: 0 0 0 8px rgba(59,130,246,0); }
+  }
+  .scan-overlay {
+    position: absolute;
+    bottom: 12px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,.65);
+    color: var(--white);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 14px;
+    border-radius: 20px;
+    white-space: nowrap;
+    transition: opacity .3s;
+  }
+
+  /* Form elements */
+  .form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--gray600);
+    margin-bottom: 6px;
+  }
+  .form-input {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1.5px solid var(--gray200);
+    border-radius: 10px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    color: var(--gray800);
+    background: var(--white);
+    outline: none;
+    transition: border-color .15s;
+    margin-bottom: 14px;
+  }
+  .form-input:focus { border-color: var(--blue-lt); }
+  .form-input.amount {
+    font-size: 28px;
+    font-weight: 700;
+    text-align: center;
+    letter-spacing: -1px;
+  }
+
+  /* Buttons */
+  .btn {
+    display: block; width: 100%;
+    padding: 13px;
+    border: none; border-radius: 10px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px; font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+    text-align: center;
+    text-decoration: none;
+  }
+  .btn-primary {
+    background: var(--blue);
+    color: var(--white);
+  }
+  .btn-primary:hover:not(:disabled) { background: #1d4ed8; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(26,86,219,.3); }
+  .btn-success {
+    background: var(--green);
+    color: var(--white);
+  }
+  .btn-success:hover:not(:disabled) { background: #047857; }
+  .btn-danger {
+    background: var(--red);
+    color: var(--white);
+  }
+  .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+  .btn-outline {
+    background: transparent;
+    color: var(--blue);
+    border: 1.5px solid var(--blue);
+  }
+  .btn-outline:hover:not(:disabled) { background: var(--blue); color: var(--white); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
+  .btn + .btn { margin-top: 8px; }
+
+  /* Result banner */
+  .result-banner {
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-top: 16px;
+    display: none;
+  }
+  .result-banner.show { display: block; }
+  .result-banner.success { background: var(--green-lt); color: #065f46; border: 1px solid #6ee7b7; }
+  .result-banner.error   { background: var(--red-lt);   color: #991b1b; border: 1px solid #fca5a5; }
+  .result-banner.warning { background: var(--amber-lt); color: #92400e; border: 1px solid #fcd34d; }
+  .result-banner.info    { background: #eff6ff; color: #1e40af; border: 1px solid #93c5fd; }
+  .result-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  .result-sub   { font-size: 12px; opacity: .8; margin-top: 4px; }
+
+  /* Progress bar */
+  .progress-track {
+    height: 6px;
+    background: var(--gray100);
+    border-radius: 99px;
+    overflow: hidden;
+    margin: 12px 0;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--blue), var(--blue-lt));
+    border-radius: 99px;
+    transition: width .3s ease;
+  }
+
+  /* Amount display */
+  .amount-display {
+    text-align: center;
+    padding: 20px 0 8px;
+  }
+  .amount-label { font-size: 12px; color: var(--gray400); font-weight: 500; text-transform: uppercase; letter-spacing: .6px; }
+  .amount-value { font-size: 40px; font-weight: 800; color: var(--navy); letter-spacing: -2px; margin-top: 4px; }
+  .amount-value .currency { font-size: 20px; font-weight: 600; vertical-align: super; margin-right: 2px; letter-spacing: 0; }
+
+  /* Balance chip */
+  .balance-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--green-lt);
+    color: #065f46;
+    font-size: 13px; font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 99px;
+  }
+
+  /* Transaction table */
+  .tx-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tx-table th { color: var(--gray400); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; padding: 0 8px 10px; text-align: left; border-bottom: 1px solid var(--gray100); }
+  .tx-table td { padding: 10px 8px; border-bottom: 1px solid var(--gray100); color: var(--gray600); }
+  .tx-table tr:last-child td { border-bottom: none; }
+  .tx-table .tx-name { font-weight: 600; color: var(--gray800); }
+  .status-badge {
+    display: inline-block;
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 99px;
+  }
+  .status-badge.sukses          { background: var(--green-lt); color: #065f46; }
+  .status-badge.verifikasi_gagal,
+  .status-badge.akun_tidak_ditemukan { background: var(--red-lt); color: #991b1b; }
+  .status-badge.saldo_tidak_cukup    { background: var(--amber-lt); color: #92400e; }
+
+  /* Keypad (opsional, untuk input nominal) */
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+  .key {
+    padding: 14px;
+    background: var(--gray100);
+    border: none; border-radius: 10px;
+    font-family: 'Inter', sans-serif;
+    font-size: 18px; font-weight: 600;
+    color: var(--gray800);
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .key:hover { background: var(--gray200); }
+  .key.del { font-size: 14px; color: var(--red); }
+  .key.zero { grid-column: span 2; }
+
+  /* Frame detail toggle */
+  details.frame-detail { margin-top: 10px; }
+  details.frame-detail summary { font-size: 12px; color: var(--blue); cursor: pointer; list-style: none; }
+  details.frame-detail summary::-webkit-details-marker { display: none; }
+  .frame-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; }
+  .frame-table td, .frame-table th { padding: 5px 8px; border-bottom: 1px solid var(--gray100); }
+  .frame-table th { color: var(--gray400); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
+  .ok  { color: var(--green); font-weight: 700; }
+  .nok { color: var(--red); font-weight: 700; }
+
+  /* Demo badge */
+  .demo-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px; color: #92400e;
+    margin-bottom: 16px;
+  }
+
+  /* Divider */
+  .divider { border: none; border-top: 1px solid var(--gray100); margin: 16px 0; }
+
+  /* Page hero */
+  .page-hero { margin-bottom: 20px; }
+  .page-hero-title { font-size: 22px; font-weight: 800; color: var(--navy); letter-spacing: -0.5px; }
+  .page-hero-sub { font-size: 14px; color: var(--gray400); margin-top: 3px; }
+
+  /* Empty state */
+  .empty { text-align: center; padding: 32px 0; color: var(--gray400); font-size: 13px; }
+
+  /* Responsive */
+  @media (max-width: 480px) {
+    .topbar-nav .nav-link span { display: none; }
+  }
+</style>
+{% block extra_style %}{% endblock %}
+</head>
+<body>
+
+<nav class="topbar">
+  <a href="/" class="topbar-brand">
+    <div class="brand-icon">🖐</div>
+    <span class="brand-name">Vein<span>Pay</span></span>
+  </a>
+  <div class="topbar-nav">
+    <a href="/pay"      class="nav-link {% if page=='pay' %}active{% endif %}">💳 <span>Bayar</span></a>
+    <a href="/topup"    class="nav-link {% if page=='topup' %}active{% endif %}">➕ <span>Isi Saldo</span></a>
+    <a href="/register" class="nav-link {% if page=='register' %}active{% endif %}">📝 <span>Daftar</span></a>
+    <a href="/history"  class="nav-link {% if page=='history' %}active{% endif %}">📜 <span>Riwayat</span></a>
+  </div>
+</nav>
+
+{% block content %}{% endblock %}
+
+<script>
+// Shared helpers
+function formatRupiah(n) {
+  return 'Rp' + Number(n).toLocaleString('id-ID');
+}
+
+function buildFrameDetail(detail) {
+  if (!detail || detail.length === 0) return '';
+  const rows = detail.map(d => `
+    <tr>
+      <td>Frame ${d.frame}</td>
+      <td>${d.kandidat}</td>
+      <td>${d.jarak}</td>
+      <td class="${d.cocok_frame ? 'ok' : 'nok'}">${d.cocok_frame ? '✓' : '✗'}</td>
+    </tr>`).join('');
+  return `<details class="frame-detail">
+    <summary>▸ Lihat detail ${detail.length} frame</summary>
+    <table class="frame-table">
+      <tr><th>Frame</th><th>Kandidat</th><th>Jarak</th><th></th></tr>
+      ${rows}
+    </table>
+  </details>`;
+}
+
+function setScanRing(el, state, label) {
+  el.querySelector('.scan-ring').className = 'scan-ring ' + state;
+  if (label !== undefined) {
+    const ov = el.querySelector('.scan-overlay');
+    if (ov) ov.textContent = label;
+  }
+}
+</script>
+{% block extra_script %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% set page = 'topup' %}
+{% block title %}Isi Saldo — VeinPay{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-hero">
+    <div class="page-hero-title">➕ Isi Saldo</div>
+    <div class="page-hero-sub">Verifikasi identitas lalu masukkan jumlah top-up</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Scan Telapak Tangan Dulu</div>
+    <div class="stream-container" id="streamWrap">
+      <img src="/video_feed" alt="kamera">
+      <div class="scan-ring" id="scanRing"></div>
+      <div class="scan-overlay" id="scanOverlay">Posisikan telapak tangan</div>
+    </div>
+    <button class="btn btn-outline" id="btnIdentify" onclick="doIdentify()">🔍 Identifikasi Akun</button>
+  </div>
+
+  <div id="accountCard" style="display:none;" class="card">
+    <div class="card-title">Akun Terverifikasi</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+      <div style="width:44px;height:44px;background:#eff6ff;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;">👤</div>
+      <div>
+        <div style="font-weight:700;font-size:16px;color:#0d1b3e;" id="accName">—</div>
+        <div class="balance-chip" id="accBalance" style="margin-top:4px;">Rp 0</div>
+      </div>
+    </div>
+    <hr class="divider">
+    <label class="form-label">Jumlah Top-Up (Rp)</label>
+    <input type="number" class="form-input" id="topupAmount" placeholder="Contoh: 50000" min="1000">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
+      <button class="key" style="font-size:13px;" onclick="setTopupQuick(25000)">25rb</button>
+      <button class="key" style="font-size:13px;" onclick="setTopupQuick(50000)">50rb</button>
+      <button class="key" style="font-size:13px;" onclick="setTopupQuick(100000)">100rb</button>
+    </div>
+    <button class="btn btn-success" id="btnTopup" onclick="doTopup()">➕ Tambah Saldo</button>
+  </div>
+
+  <div class="result-banner" id="resultBanner">
+    <div class="result-title" id="resultTitle"></div>
+    <div id="resultBody"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let verifiedNama = null;
+
+function setTopupQuick(v) { document.getElementById('topupAmount').value = v; }
+
+async function doIdentify() {
+  const btn = document.getElementById('btnIdentify');
+  btn.disabled = true;
+  setScanRing(document.getElementById('streamWrap'), 'scanning', 'Mengidentifikasi...');
+
+  try {
+    const res = await fetch('/identify_only', { method: 'POST' });
+    const data = await res.json();
+
+    if (data.cocok) {
+      setScanRing(document.getElementById('streamWrap'), 'success', '✓ ' + data.nama);
+      verifiedNama = data.nama;
+      document.getElementById('accName').textContent = data.nama;
+      document.getElementById('accBalance').textContent = formatRupiah(data.saldo);
+      document.getElementById('accountCard').style.display = 'block';
+    } else {
+      setScanRing(document.getElementById('streamWrap'), 'error', '✗ Tidak dikenali');
+      showBanner('error', '❌ Tidak Dikenali',
+        'Telapak tangan tidak cocok. Pastikan tangan sudah terdaftar.');
+    }
+  } catch(e) {
+    setScanRing(document.getElementById('streamWrap'), 'error', '✗ Error');
+    showBanner('error', '❌ Error', 'Tidak bisa menghubungi server.');
+  }
+
+  setTimeout(() => setScanRing(document.getElementById('streamWrap'), '', 'Posisikan telapak tangan'), 3000);
+  btn.disabled = false;
+}
+
+async function doTopup() {
+  if (!verifiedNama) { alert('Identifikasi akun dulu.'); return; }
+  const jumlah = parseInt(document.getElementById('topupAmount').value) || 0;
+  if (jumlah < 1000) { alert('Minimal top-up Rp 1.000.'); return; }
+
+  const btn = document.getElementById('btnTopup');
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/topup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nama: verifiedNama, jumlah })
+    });
+    const data = await res.json();
+
+    if (data.status === 'sukses') {
+      document.getElementById('accBalance').textContent = formatRupiah(data.saldo_baru);
+      showBanner('success', '✅ Saldo Berhasil Ditambahkan',
+        `${formatRupiah(jumlah)} ditambahkan ke akun <strong>${verifiedNama}</strong>. Saldo baru: <strong>${formatRupiah(data.saldo_baru)}</strong>`);
+      document.getElementById('topupAmount').value = '';
+    } else {
+      showBanner('error', '❌ Gagal', data.message || 'Terjadi kesalahan.');
+    }
+  } catch(e) {
+    showBanner('error', '❌ Error', 'Tidak bisa menghubungi server.');
+  }
+  btn.disabled = false;
+}
+
+function showBanner(type, title, body) {
+  const b = document.getElementById('resultBanner');
+  b.className = 'result-banner show ' + type;
+  document.getElementById('resultTitle').textContent = title;
+  document.getElementById('resultBody').innerHTML = body;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% set page = 'register' %}
+{% block title %}Registrasi — VeinPay{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-hero">
+    <div class="page-hero-title">📝 Registrasi</div>
+    <div class="page-hero-sub">Daftarkan telapak tangan ke sistem</div>
+  </div>
+
+  <div class="card">
+    <div class="demo-badge">ℹ️ Tidak memerlukan training ulang model — embedding dihitung langsung dari scan.</div>
+    <div class="card-title">Data Pengguna Baru</div>
+    <label class="form-label">Nama Lengkap</label>
+    <input type="text" class="form-input" id="nama" placeholder="Contoh: Ahmad Randi">
+    <label class="form-label">Saldo Awal (Rp)</label>
+    <input type="number" class="form-input" id="saldo" value="100000" min="0">
+  </div>
+
+  <div class="card">
+    <div class="card-title">Scan Telapak Tangan (30 sampel)</div>
+    <div class="stream-container" id="streamWrap">
+      <img src="/video_feed" alt="kamera">
+      <div class="scan-ring" id="scanRing"></div>
+      <div class="scan-overlay" id="scanOverlay">Siap memulai registrasi</div>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div style="text-align:center;font-size:13px;color:#9ca3af;margin-bottom:14px;" id="progressLabel">—</div>
+    <button class="btn btn-primary" id="btnReg" onclick="startRegister()">🖐 Mulai Scan Registrasi</button>
+  </div>
+
+  <div class="result-banner" id="resultBanner">
+    <div class="result-title" id="resultTitle"></div>
+    <div id="resultBody"></div>
+  </div>
+
+  <div class="card" style="border:1.5px solid #fee2e2;">
+    <div class="card-title" style="color:#dc2626;">⚠️ Hapus Registrasi</div>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:12px;">Hapus embedding + akun sebelum registrasi ulang.</p>
+    <label class="form-label">Nama yang ingin dihapus</label>
+    <input type="text" class="form-input" id="namaHapus" placeholder="Nama persis seperti saat mendaftar">
+    <button class="btn btn-danger" onclick="hapusRegistrasi()">🗑 Hapus Registrasi</button>
+    <div style="margin-top:10px;font-size:13px;text-align:center;" id="hapusStatus"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let pollHandle = null;
+
+async function startRegister() {
+  const nama = document.getElementById('nama').value.trim();
+  const saldo = parseInt(document.getElementById('saldo').value) || 0;
+  if (!nama) { alert('Isi nama dulu.'); return; }
+
+  const btn = document.getElementById('btnReg');
+  btn.disabled = true;
+  setScanRing(document.getElementById('streamWrap'), 'scanning', 'Mengambil sampel...');
+
+  const res = await fetch('/start_register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nama, saldo_awal: saldo })
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    showBanner('error', '❌ Gagal', err.error);
+    setScanRing(document.getElementById('streamWrap'), 'error', '✗ Gagal');
+    btn.disabled = false;
+    return;
+  }
+
+  pollHandle = setInterval(async () => {
+    const r = await fetch('/register_status');
+    const d = await r.json();
+    const pct = d.total ? (d.count / d.total) * 100 : 0;
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressLabel').textContent = d.running
+      ? `Mengambil sampel ${d.count} / ${d.total}`
+      : d.message;
+    document.getElementById('scanOverlay').textContent = d.running
+      ? `Sampel ${d.count}/${d.total}`
+      : (d.count >= d.total ? '✓ Selesai' : '—');
+
+    if (!d.running) {
+      clearInterval(pollHandle);
+      btn.disabled = false;
+      if (d.count >= d.total) {
+        setScanRing(document.getElementById('streamWrap'), 'success', '✓ Terdaftar');
+        showBanner('success', '✅ Registrasi Berhasil', d.message);
+      } else {
+        setScanRing(document.getElementById('streamWrap'), '', 'Siap memulai registrasi');
+      }
+    }
+  }, 400);
+}
+
+async function hapusRegistrasi() {
+  const nama = document.getElementById('namaHapus').value.trim();
+  if (!nama) { alert('Isi nama yang ingin dihapus.'); return; }
+  if (!confirm(`Hapus registrasi "${nama}"?\nEmbedding dan akun akan dihapus permanen.`)) return;
+
+  const res = await fetch('/delete_person', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nama })
+  });
+  const data = await res.json();
+  const el = document.getElementById('hapusStatus');
+  if (res.ok) {
+    el.style.color = '#059669';
+    el.textContent = '✅ ' + data.message;
+  } else {
+    el.style.color = '#dc2626';
+    el.textContent = '❌ ' + (data.error || 'Gagal.');
+  }
+}
+
+function showBanner(type, title, body) {
+  const b = document.getElementById('resultBanner');
+  b.className = 'result-banner show ' + type;
+  document.getElementById('resultTitle').textContent = title;
+  document.getElementById('resultBody').innerHTML = body;
+}
+</script>
+{% endblock %}
