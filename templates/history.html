@@ -30,23 +30,26 @@ async function loadHistory() {
     return;
   }
 
+  const jenisLabel = { topup: '➕ Top-up', payment: '💳 Bayar', transfer: '🔁 Transfer' };
+
   let html = `<table class="tx-table">
     <tr>
-      <th>Waktu</th><th>Nama</th><th>Jumlah</th><th>Saldo Akhir</th><th>Status</th><th>Jarak</th>
+      <th>Waktu</th><th>Nama</th><th>Jenis</th><th>Tujuan</th><th>Jumlah</th><th>Status</th>
     </tr>`;
 
   rows.forEach(r => {
-    const jumlah = r.jumlah ? formatRupiah(r.jumlah) : '—';
-    const saldo  = r.saldo_setelah !== null && r.saldo_setelah !== undefined ? formatRupiah(r.saldo_setelah) : '—';
-    const jarak  = r.jarak_embedding !== null && r.jarak_embedding !== undefined ? Number(r.jarak_embedding).toFixed(4) : '—';
+    const jumlah = formatRupiah(r.jumlah);
     const waktu  = r.waktu ? r.waktu.replace('T', ' ').substring(0, 19) : '—';
+    const tujuan = r.jenis_transaksi === 'payment'  ? (r.nama_merchant || '—')
+                 : r.jenis_transaksi === 'transfer' ? (r.nama_tujuan || '—')
+                 : '—';
     html += `<tr>
       <td style="white-space:nowrap;font-size:12px;">${waktu}</td>
       <td class="tx-name">${r.nama || '—'}</td>
+      <td><span class="status-badge ${r.jenis_transaksi}">${jenisLabel[r.jenis_transaksi] || r.jenis_transaksi}</span></td>
+      <td>${tujuan}</td>
       <td>${jumlah}</td>
-      <td>${saldo}</td>
       <td><span class="status-badge ${r.status}">${r.status}</span></td>
-      <td style="font-size:12px;font-family:monospace;">${jarak}</td>
     </tr>`;
   });
 

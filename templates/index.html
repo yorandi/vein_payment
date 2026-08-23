@@ -230,7 +230,7 @@
   }
   .menu-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 12px;
   }
   .menu-item {
@@ -254,6 +254,8 @@
   .menu-icon.green  { background: #f6ffed; }
   .menu-icon.purple { background: #f9f0ff; }
   .menu-icon.orange { background: #fff7e6; }
+  .menu-icon.teal   { background: #e6fffb; }
+  .menu-icon.pink   { background: #fff0f6; }
   .menu-label {
     font-size: 11px;
     font-weight: 600;
@@ -313,11 +315,9 @@
     font-size: 20px;
     flex-shrink: 0;
   }
-  .tx-icon.sukses           { background: #f6ffed; }
-  .tx-icon.verifikasi_gagal,
-  .tx-icon.akun_tidak_ditemukan { background: #fff1f0; }
-  .tx-icon.saldo_tidak_cukup { background: #fffbe6; }
-  .tx-icon.topup            { background: #e6f7ff; }
+  .tx-icon.payment  { background: #f6ffed; }
+  .tx-icon.topup    { background: #e6f7ff; }
+  .tx-icon.transfer { background: #fff7e6; }
   .tx-info { flex: 1; min-width: 0; }
   .tx-name { font-size: 14px; font-weight: 600; color: var(--gray800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tx-time { font-size: 11px; color: var(--gray400); margin-top: 2px; }
@@ -553,6 +553,10 @@
       <div class="menu-icon blue">💳</div>
       <span class="menu-label">Bayar</span>
     </a>
+    <a href="/transfer" class="menu-item">
+      <div class="menu-icon teal">🔁</div>
+      <span class="menu-label">Kirim</span>
+    </a>
     <a href="/topup" class="menu-item">
       <div class="menu-icon green">➕</div>
       <span class="menu-label">Isi Saldo</span>
@@ -564,6 +568,10 @@
     <a href="/history" class="menu-item">
       <div class="menu-icon orange">📜</div>
       <span class="menu-label">Riwayat</span>
+    </a>
+    <a href="/merchant" class="menu-item">
+      <div class="menu-icon pink">🏪</div>
+      <span class="menu-label">Merchant</span>
     </a>
   </div>
 </div>
@@ -735,7 +743,9 @@ async function loadUserStats(nama) {
     const res = await fetch('/riwayat');
     const all = await res.json();
     const now = new Date();
-    const userTx = all.filter(t => t.nama === nama);
+    // Riwayat global -- ambil transaksi di mana nama ini pengirim (nama)
+    // ATAU penerima transfer (nama_tujuan), supaya transfer masuk juga kehitung.
+    const userTx = all.filter(t => t.nama === nama || t.nama_tujuan === nama);
     const thisMonth = userTx.filter(t => {
       if (!t.waktu) return false;
       const d = new Date(t.waktu);
@@ -744,8 +754,14 @@ async function loadUserStats(nama) {
 
     let masuk = 0, keluar = 0;
     thisMonth.forEach(t => {
-      if (t.status === 'topup') masuk += (t.jumlah || 0);
-      if (t.status === 'sukses') keluar += (t.jumlah || 0);
+      if (t.jenis_transaksi === 'topup') {
+        masuk += (t.jumlah || 0);
+      } else if (t.jenis_transaksi === 'payment') {
+        keluar += (t.jumlah || 0);
+      } else if (t.jenis_transaksi === 'transfer') {
+        if (t.nama === nama) keluar += (t.jumlah || 0);
+        else if (t.nama_tujuan === nama) masuk += (t.jumlah || 0);
+      }
     });
 
     document.getElementById('infoIn').textContent = masuk > 0 ? `Rp${masuk.toLocaleString('id-ID')}` : 'Rp0';
@@ -766,37 +782,27 @@ async function loadTransactions() {
       return;
     }
 
-    const iconMap = {
-      sukses: '💳',
-      topup: '💰',
-      verifikasi_gagal: '❌',
-      akun_tidak_ditemukan: '❌',
-      saldo_tidak_cukup: '⚠️',
-    };
+    const iconMap  = { topup: '💰', payment: '💳', transfer: '🔁' };
+    const labelMap = { topup: 'Isi Saldo', payment: 'Pembayaran', transfer: 'Transfer' };
 
     list.innerHTML = rows.slice(0, 8).map(r => {
-      const icon = iconMap[r.status] || '📋';
+      const jenis = r.jenis_transaksi;
+      const icon = iconMap[jenis] || '📋';
       const waktu = r.waktu ? r.waktu.replace('T', ' ').substring(0, 16) : '—';
       const jumlah = r.jumlah ? `Rp${Number(r.jumlah).toLocaleString('id-ID')}` : '—';
-      const amountClass = r.status === 'sukses' ? 'minus' : r.status === 'topup' ? 'plus' : 'gray';
-      const prefix = r.status === 'sukses' ? '−' : r.status === 'topup' ? '+' : '';
-      const label = {
-        sukses: 'Pembayaran',
-        topup: 'Isi Saldo',
-        verifikasi_gagal: 'Verifikasi Gagal',
-        saldo_tidak_cukup: 'Saldo Tidak Cukup',
-        akun_tidak_ditemukan: 'Akun Tidak Ditemukan',
-      }[r.status] || r.status;
+      const amountClass = jenis === 'payment' ? 'minus' : jenis === 'topup' ? 'plus' : 'gray';
+      const prefix = jenis === 'payment' ? '−' : jenis === 'topup' ? '+' : '';
+      const label = labelMap[jenis] || jenis;
+      const tujuan = jenis === 'payment' ? r.nama_merchant : jenis === 'transfer' ? r.nama_tujuan : null;
 
       return `<div class="tx-item">
-        <div class="tx-icon ${r.status}">${icon}</div>
+        <div class="tx-icon ${jenis}">${icon}</div>
         <div class="tx-info">
           <div class="tx-name">${r.nama || '—'}</div>
-          <div class="tx-time">${label} · ${waktu}</div>
+          <div class="tx-time">${label}${tujuan ? ' · ' + tujuan : ''} · ${waktu}</div>
         </div>
         <div class="tx-amount">
           <div class="tx-amount-val ${amountClass}">${prefix}${jumlah}</div>
-          <div class="tx-status">${Number(r.jarak_embedding || 0).toFixed(4)}</div>
         </div>
       </div>`;
     }).join('');

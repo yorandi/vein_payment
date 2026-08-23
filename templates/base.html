@@ -276,10 +276,11 @@
     font-size: 11px; font-weight: 600;
     padding: 2px 8px; border-radius: 99px;
   }
-  .status-badge.sukses          { background: var(--green-lt); color: #065f46; }
-  .status-badge.verifikasi_gagal,
-  .status-badge.akun_tidak_ditemukan { background: var(--red-lt); color: #991b1b; }
-  .status-badge.saldo_tidak_cukup    { background: var(--amber-lt); color: #92400e; }
+  .status-badge.success  { background: var(--green-lt); color: #065f46; }
+  .status-badge.failed   { background: var(--red-lt);   color: #991b1b; }
+  .status-badge.topup    { background: #eff6ff;         color: #1e40af; }
+  .status-badge.payment  { background: var(--green-lt); color: #065f46; }
+  .status-badge.transfer { background: var(--amber-lt); color: #92400e; }
 
   /* Keypad (opsional, untuk input nominal) */
   .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
@@ -321,6 +322,23 @@
   /* Divider */
   .divider { border: none; border-top: 1px solid var(--gray100); margin: 16px 0; }
 
+  /* Merchant selection list */
+  .merchant-list { display: flex; flex-direction: column; gap: 8px; }
+  .merchant-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px;
+    border: 1.5px solid var(--gray200);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all .15s;
+    font-size: 14px; font-weight: 600;
+    color: var(--gray800);
+  }
+  .merchant-item:hover { border-color: var(--blue-lt); }
+  .merchant-item.selected { border-color: var(--blue); background: #eff6ff; color: var(--blue); }
+  .merchant-item .check { opacity: 0; transition: opacity .15s; color: var(--blue); }
+  .merchant-item.selected .check { opacity: 1; }
+
   /* Page hero */
   .page-hero { margin-bottom: 20px; }
   .page-hero-title { font-size: 22px; font-weight: 800; color: var(--navy); letter-spacing: -0.5px; }
@@ -345,9 +363,11 @@
   </a>
   <div class="topbar-nav">
     <a href="/pay"      class="nav-link {% if page=='pay' %}active{% endif %}">💳 <span>Bayar</span></a>
+    <a href="/transfer" class="nav-link {% if page=='transfer' %}active{% endif %}">🔁 <span>Transfer</span></a>
     <a href="/topup"    class="nav-link {% if page=='topup' %}active{% endif %}">➕ <span>Isi Saldo</span></a>
     <a href="/register" class="nav-link {% if page=='register' %}active{% endif %}">📝 <span>Daftar</span></a>
     <a href="/history"  class="nav-link {% if page=='history' %}active{% endif %}">📜 <span>Riwayat</span></a>
+    <a href="/merchant" class="nav-link {% if page=='merchant' %}active{% endif %}">🏪 <span>Merchant</span></a>
   </div>
 </nav>
 

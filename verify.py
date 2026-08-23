@@ -20,7 +20,7 @@ IMG_SIZE = (128, 128)
 
 
 class PalmVeinVerifier:
-    def __init__(self, model_dir, threshold=0.2037):
+    def __init__(self, model_dir, threshold=0.3):
         """
         threshold default 0.2037 = operating point FAR~1% dari evaluate_siamese.py
         (lihat README palm_vein_models). Sesuaikan kalau Anda evaluasi ulang
@@ -177,7 +177,9 @@ class PalmVeinVerifier:
                 "detail_per_frame": detail_per_frame,
                 "strategy": strategy,
             }
-            if cocok and margin < min_margin:
+            # Guard yang sama: kalau cuma 1 orang terdaftar, margin tidak
+            # relevan (tidak ada kandidat kedua untuk dibandingkan).
+            if len(self.names) > 1 and cocok and margin < min_margin:
                 result["cocok"] = False
                 result["alasan_tolak"] = (
                     f"margin terlalu sempit ({margin:.4f} < {min_margin}) "
@@ -201,7 +203,11 @@ class PalmVeinVerifier:
         cocok = jarak_final <= self.threshold
         alasan_tolak = None
 
-        if cocok and margin < min_margin:
+        # Kalau kandidat yang terdaftar cuma 1 orang, tidak ada "kandidat
+        # kedua" untuk dibandingkan -- best_idx == second_idx sehingga
+        # margin selalu 0 dan match valid akan salah ditolak. Skip margin
+        # check dalam kasus ini (sama seperti guard di identify()).
+        if len(self.names) > 1 and cocok and margin < min_margin:
             cocok = False
             alasan_tolak = (
                 f"margin terlalu sempit ({margin:.4f} < {min_margin}) "
