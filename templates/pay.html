@@ -132,7 +132,7 @@ async function doPayment() {
       showBanner('success',
         '✅ Pembayaran Berhasil',
         `Atas nama: <strong>${data.nama}</strong> &nbsp;|&nbsp; ${formatRupiah(data.jumlah)}`,
-        `Sisa saldo: ${formatRupiah(data.saldo_baru)} &nbsp;•&nbsp; Jarak: ${data.jarak_final?.toFixed(4)} &nbsp;•&nbsp; Margin: ${data.margin?.toFixed(4)}${buildFrameDetail(data.detail_per_frame)}`
+        `Sisa saldo: ${formatRupiah(data.saldo_baru)} &nbsp;•&nbsp; Jarak: ${formatScore(data.jarak_final)} &nbsp;•&nbsp; Margin: ${formatScore(data.margin)}${buildFrameDetail(data.detail_per_frame)}`
       );
       amountVal = 0; updateDisplay();
     } else if (data.status === 'gagal_verifikasi') {
@@ -140,7 +140,7 @@ async function doPayment() {
       const alasan = data.alasan_tolak ? `<br><small>${data.alasan_tolak}</small>` : '';
       showBanner('error', '❌ Verifikasi Gagal',
         'Telapak tangan tidak dikenali. Silakan coba lagi.' + alasan,
-        `Jarak: ${data.jarak_final?.toFixed(4)} &nbsp;•&nbsp; Margin: ${data.margin?.toFixed(4)}${buildFrameDetail(data.detail_per_frame)}`
+        `Jarak: ${formatScore(data.jarak_final)} &nbsp;•&nbsp; Margin: ${formatScore(data.margin)}${buildFrameDetail(data.detail_per_frame)}`
       );
     } else if (data.status === 'error') {
       // Backend sekarang menggabungkan "saldo tidak cukup", "akun tidak
@@ -151,7 +151,7 @@ async function doPayment() {
       showBanner(isSaldo ? 'warning' : 'error',
         isSaldo ? '⚠️ Saldo Tidak Cukup' : '❌ Gagal',
         data.message || 'Terjadi kesalahan.',
-        data.jarak_final !== undefined ? `Jarak: ${data.jarak_final?.toFixed(4)}${buildFrameDetail(data.detail_per_frame)}` : ''
+        data.jarak_final != null ? `Jarak: ${formatScore(data.jarak_final)}${buildFrameDetail(data.detail_per_frame)}` : ''
       );
     } else {
       setScanRing(document.getElementById('streamWrap'), 'error', '✗ Error');
@@ -173,5 +173,7 @@ function showBanner(type, title, body, sub) {
   document.getElementById('resultBody').innerHTML = body;
   document.getElementById('resultSub').innerHTML = sub;
 }
+
+function formatScore(value) { return Number.isFinite(value) ? value.toFixed(4) : '—'; }
 </script>
 {% endblock %}

@@ -19,6 +19,12 @@ except ImportError:
     from tensorflow.lite.python import interpreter as tflite
 
 IMG_SIZE = (128, 128)
+# Batas ini hanya menolak frame yang nyaris kosong/gelap total. Nilai lebih
+# ketat harus dikalibrasi dari data kamera NoIR v2 sendiri, bukan ditebak.
+MIN_FRAME_BRIGHTNESS = 3.0
+MAX_FRAME_BRIGHTNESS = 252.0
+MIN_FRAME_CONTRAST = 2.0
+MIN_FRAME_SHARPNESS = 1.0
 
 
 class PalmVeinVerifier:
@@ -67,9 +73,13 @@ class PalmVeinVerifier:
 
     @staticmethod
     def frame_quality(frame_bgr):
-        """Skor ringan untuk menolak frame sangat gelap/blur sebelum inferensi."""
+        """Metrik ringan untuk mendeteksi frame kosong/gelap total."""
         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        return float(gray.std()), float(cv2.Laplacian(gray, cv2.CV_64F).var())
+        return (
+            float(gray.mean()),
+            float(gray.std()),
+            float(cv2.Laplacian(gray, cv2.CV_64F).var()),
+        )
 
     def has_person(self, nama):
         with self._reference_lock:
@@ -120,13 +130,26 @@ class PalmVeinVerifier:
                 "alasan_tolak": "belum ada template terdaftar",
             }
 
-        # Tolak frame yang praktis tidak mengandung detail. Nilainya ringan
-        # untuk Pi 3B dan mencegah rata-rata embedding dirusak frame blur.
+        # Tolak hanya frame yang praktis kosong/gelap total. Camera NoIR v2
+        # dapat menghasilkan kontras lebih rendah dari kamera RGB biasa,
+        # sehingga batas tajam generik tidak boleh menjadi hard gate.
         accepted_frames = []
         rejected_count = 0
+        quality_details = []
         for frame in frames_bgr:
-            contrast, sharpness = self.frame_quality(frame)
-            if contrast >= 12.0 and sharpness >= 15.0:
+            brightness, contrast, sharpness = self.frame_quality(frame)
+            accepted = (
+                MIN_FRAME_BRIGHTNESS <= brightness <= MAX_FRAME_BRIGHTNESS
+                and contrast >= MIN_FRAME_CONTRAST
+                and sharpness >= MIN_FRAME_SHARPNESS
+            )
+            quality_details.append({
+                "brightness": round(brightness, 1),
+                "contrast": round(contrast, 2),
+                "sharpness": round(sharpness, 2),
+                "accepted": accepted,
+            })
+            if accepted:
                 accepted_frames.append(frame)
             else:
                 rejected_count += 1
@@ -134,6 +157,7 @@ class PalmVeinVerifier:
             return {
                 "nama": None, "jarak_final": None, "margin": None,
                 "cocok": False, "detail_per_frame": [], "strategy": strategy,
+                "quality_per_frame": quality_details,
                 "alasan_tolak": f"kualitas frame rendah ({rejected_count}/{len(frames_bgr)} frame ditolak)",
             }
 

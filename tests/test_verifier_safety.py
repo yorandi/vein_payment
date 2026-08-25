@@ -41,6 +41,14 @@ class VerifierSafetyTests(unittest.TestCase):
         data = np.load(verifier.reference_path)
         self.assertEqual(data["names"].tolist(), ["randi", "siti"])
 
+    def test_quality_metrics_accept_low_contrast_nonempty_noir_like_frame(self):
+        frame = np.full((20, 20, 3), 40, dtype=np.uint8)
+        frame[::2, ::2] = 45
+        brightness, contrast, sharpness = PalmVeinVerifier.frame_quality(frame)
+        self.assertGreater(brightness, 3)
+        self.assertGreater(contrast, 2)
+        self.assertGreaterEqual(sharpness, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
