@@ -145,11 +145,11 @@ file `.npz` di folder `model/`.
 
 ## 6. Threshold yang dipakai
 
-Default `0.2037` di `verify.py` -- ini operating point **FAR~1%** hasil
-`evaluate_siamese.py` di proyek `palm_vein_models`, dipilih karena untuk
-konteks pembayaran, risiko salah menerima orang lain (FAR) jauh lebih
-berisiko secara finansial dibanding risiko menolak orang yang sah (FRR).
-Lihat README `palm_vein_models` untuk tabel lengkap trade-off FAR vs FRR.
+Default `0.30` dikonfigurasi melalui `BIOMETRIC_THRESHOLD` di `.env`. Nilai
+ini dipilih untuk evaluasi demo saat ini; semua attempt menyimpan threshold,
+jarak, dan keputusan di `biometric_attempts` agar FAR/FRR dapat dihitung ulang
+dengan kondisi kamera NoIR v2 yang sama. Jangan mengubah nilai tanpa mencatat
+hasil evaluasi ulang.
 
 ## 7. Keterbatasan yang harus disebutkan di skripsi
 

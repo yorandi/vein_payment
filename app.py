@@ -29,6 +29,7 @@ import threading
 import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import os
 
 import config  # noqa: F401 -- pastikan .env sudah dimuat
 from verify import PalmVeinVerifier
@@ -41,9 +42,10 @@ app.register_blueprint(payment_bp, url_prefix="/api")
 
 
 MODEL_DIR  = str(Path(__file__).resolve().with_name("model"))
-# Nilai ini adalah operating point lama dengan FAR sekitar 1%. Jangan ubah
-# tanpa evaluasi ulang menggunakan pipeline multiframe yang sama.
-THRESHOLD  = 0.2037
+# Konfigurasikan per lingkungan. Nilai 0.30 adalah operating point demo yang
+# digunakan pada evaluasi pengguna saat ini; catatan FAR/FRR disimpan agar
+# threshold dapat dikalibrasi ulang dari data kamera NoIR v2.
+THRESHOLD  = float(os.environ.get("BIOMETRIC_THRESHOLD", "0.30"))
 SCAN_FRAMES = 5
 SCAN_DELAY  = 0.3
 AGGREGATION = "embedding_average"
@@ -54,6 +56,8 @@ REG_TOTAL_FRAMES = 30
 REG_DELAY = 0.5
 
 db.init_db()
+if not 0.0 < THRESHOLD <= 2.0:
+    raise ValueError("BIOMETRIC_THRESHOLD harus lebih besar dari 0 dan maksimal 2")
 verifier = PalmVeinVerifier(MODEL_DIR, threshold=THRESHOLD)
 
 picam2 = Picamera2()
