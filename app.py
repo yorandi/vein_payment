@@ -464,7 +464,6 @@ def delete_person():
         return jsonify({"error": f"Gagal menghapus template biometric; akun dipulihkan: {e}"}), 500
 
     return jsonify({"status": "ok", "message": f"'{nama}' dinonaktifkan. Riwayat transaksi tetap disimpan."})
-
 # ----------------------------------------------------------------
 # API — Lainnya
 # ----------------------------------------------------------------

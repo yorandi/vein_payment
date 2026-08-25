@@ -20,8 +20,8 @@ Environment variables yang dibutuhkan (.env), mengikuti konfigurasi
 yang sudah ada di project (koneksi TCP ke 127.0.0.1):
     DB_HOST=127.0.0.1
     DB_NAME=payment
-    DB_USER=admin
-    DB_PASSWORD=root
+    DB_USER=...
+    DB_PASSWORD=...
 """
 
 import os
