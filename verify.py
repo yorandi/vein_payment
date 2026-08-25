@@ -8,6 +8,8 @@ embedding dari frame kamera dan mencocokkannya dengan database referensi.
 """
 
 import os
+import threading
+import tempfile
 import numpy as np
 import cv2
 
@@ -20,7 +22,7 @@ IMG_SIZE = (128, 128)
 
 
 class PalmVeinVerifier:
-    def __init__(self, model_dir, threshold=0.2037):
+    def __init__(self, model_dir, threshold=0.3):
         """
         threshold default 0.2037 = operating point FAR~1% dari evaluate_siamese.py
         (lihat README palm_vein_models). Sesuaikan kalau Anda evaluasi ulang
@@ -39,6 +41,9 @@ class PalmVeinVerifier:
         data = np.load(self.reference_path, allow_pickle=True)
         self.names = list(data["names"])
         self.vectors = np.array(data["vectors"])
+        if len(self.names) != len(self.vectors):
+            raise ValueError("reference_embeddings.npz tidak konsisten (jumlah nama dan embedding berbeda).")
+        self._reference_lock = threading.RLock()
 
     def enhance(self, gray):
         """CLAHE + sharpening -- sama seperti enhancement di palm_capture."""
@@ -60,11 +65,23 @@ class PalmVeinVerifier:
         self.interpreter.invoke()
         return self.interpreter.get_tensor(self.output_details[0]["index"])[0]
 
+    @staticmethod
+    def frame_quality(frame_bgr):
+        """Skor ringan untuk menolak frame sangat gelap/blur sebelum inferensi."""
+        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        return float(gray.std()), float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+    def has_person(self, nama):
+        with self._reference_lock:
+            return nama in self.names
+
     def identify(self, frame_bgr):
         """
         Mengidentifikasi dari satu frame tunggal.
         Untuk sistem pembayaran, gunakan identify_multiframe() agar lebih akurat.
         """
+        if not self.names:
+            return {"nama": None, "jarak": None, "cocok": False, "alasan_tolak": "belum ada template terdaftar"}
         embedding = self.get_embedding(frame_bgr)
         distances = np.linalg.norm(self.vectors - embedding, axis=1)
         idx = int(np.argmin(distances))
@@ -96,11 +113,32 @@ class PalmVeinVerifier:
         """
         if len(frames_bgr) == 0:
             raise ValueError("Tidak ada frame yang diberikan.")
+        if not self.names:
+            return {
+                "nama": None, "jarak_final": None, "margin": None,
+                "cocok": False, "detail_per_frame": [], "strategy": strategy,
+                "alasan_tolak": "belum ada template terdaftar",
+            }
 
-        # hitung embedding semua frame
-        embeddings = np.array([
-            self.get_embedding(frame) for frame in frames_bgr
-        ])  # shape: (n_frames, embedding_dim)
+        # Tolak frame yang praktis tidak mengandung detail. Nilainya ringan
+        # untuk Pi 3B dan mencegah rata-rata embedding dirusak frame blur.
+        accepted_frames = []
+        rejected_count = 0
+        for frame in frames_bgr:
+            contrast, sharpness = self.frame_quality(frame)
+            if contrast >= 12.0 and sharpness >= 15.0:
+                accepted_frames.append(frame)
+            else:
+                rejected_count += 1
+        if len(accepted_frames) < max(3, len(frames_bgr) - 2):
+            return {
+                "nama": None, "jarak_final": None, "margin": None,
+                "cocok": False, "detail_per_frame": [], "strategy": strategy,
+                "alasan_tolak": f"kualitas frame rendah ({rejected_count}/{len(frames_bgr)} frame ditolak)",
+            }
+
+        # hitung embedding semua frame yang lolos kualitas
+        embeddings = np.array([self.get_embedding(frame) for frame in accepted_frames])
 
         # detail per frame untuk keperluan logging/UI
         all_distances = np.array([
@@ -177,7 +215,9 @@ class PalmVeinVerifier:
                 "detail_per_frame": detail_per_frame,
                 "strategy": strategy,
             }
-            if cocok and margin < min_margin:
+            # Guard yang sama: kalau cuma 1 orang terdaftar, margin tidak
+            # relevan (tidak ada kandidat kedua untuk dibandingkan).
+            if len(self.names) > 1 and cocok and margin < min_margin:
                 result["cocok"] = False
                 result["alasan_tolak"] = (
                     f"margin terlalu sempit ({margin:.4f} < {min_margin}) "
@@ -201,7 +241,11 @@ class PalmVeinVerifier:
         cocok = jarak_final <= self.threshold
         alasan_tolak = None
 
-        if cocok and margin < min_margin:
+        # Kalau kandidat yang terdaftar cuma 1 orang, tidak ada "kandidat
+        # kedua" untuk dibandingkan -- best_idx == second_idx sehingga
+        # margin selalu 0 dan match valid akan salah ditolak. Skip margin
+        # check dalam kasus ini (sama seperti guard di identify()).
+        if len(self.names) > 1 and cocok and margin < min_margin:
             cocok = False
             alasan_tolak = (
                 f"margin terlalu sempit ({margin:.4f} < {min_margin}) "
@@ -236,14 +280,12 @@ class PalmVeinVerifier:
         embeddings = [self.get_embedding(f) for f in frames_bgr]
         new_vector = np.mean(embeddings, axis=0)
 
-        if nama in self.names:
-            idx = self.names.index(nama)
-            self.vectors[idx] = new_vector
-        else:
+        with self._reference_lock:
+            if nama in self.names:
+                raise ValueError(f"Template '{nama}' sudah ada; pembaruan template harus melalui prosedur admin.")
             self.names.append(nama)
             self.vectors = np.vstack([self.vectors, new_vector[np.newaxis, :]])
-
-        self._save_reference()
+            self._save_reference()
         return new_vector
 
     def delete_person(self, nama):
@@ -252,14 +294,24 @@ class PalmVeinVerifier:
         Mengembalikan True kalau berhasil ditemukan dan dihapus, False kalau
         nama tidak ditemukan.
         """
-        if nama not in self.names:
-            return False
-
-        idx = self.names.index(nama)
-        self.names.pop(idx)
-        self.vectors = np.delete(self.vectors, idx, axis=0)
-        self._save_reference()
-        return True
+        with self._reference_lock:
+            if nama not in self.names:
+                return False
+            idx = self.names.index(nama)
+            self.names.pop(idx)
+            self.vectors = np.delete(self.vectors, idx, axis=0)
+            self._save_reference()
+            return True
 
     def _save_reference(self):
-        np.savez(self.reference_path, names=np.array(self.names), vectors=self.vectors)
+        # Tulis ke file sementara dan replace atomik agar listrik padam atau
+        # crash tidak merusak file referensi yang sedang dipakai pembayaran.
+        folder = os.path.dirname(os.path.abspath(self.reference_path))
+        fd, temp_path = tempfile.mkstemp(prefix="reference_embeddings_", suffix=".npz", dir=folder)
+        os.close(fd)
+        try:
+            np.savez(temp_path, names=np.array(self.names), vectors=self.vectors)
+            os.replace(temp_path, self.reference_path)
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)

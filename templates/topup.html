@@ -48,6 +48,7 @@
 {% block extra_script %}
 <script>
 let verifiedNama = null;
+let verificationToken = null;
 
 function setTopupQuick(v) { document.getElementById('topupAmount').value = v; }
 
@@ -63,6 +64,7 @@ async function doIdentify() {
     if (data.cocok) {
       setScanRing(document.getElementById('streamWrap'), 'success', '✓ ' + data.nama);
       verifiedNama = data.nama;
+      verificationToken = data.verification_token;
       document.getElementById('accName').textContent = data.nama;
       document.getElementById('accBalance').textContent = formatRupiah(data.saldo);
       document.getElementById('accountCard').style.display = 'block';
@@ -92,7 +94,7 @@ async function doTopup() {
     const res = await fetch('/topup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nama: verifiedNama, jumlah })
+    body: JSON.stringify({ nama: verifiedNama, jumlah, verification_token: verificationToken })
     });
     const data = await res.json();
 
@@ -101,6 +103,7 @@ async function doTopup() {
       showBanner('success', '✅ Saldo Berhasil Ditambahkan',
         `${formatRupiah(jumlah)} ditambahkan ke akun <strong>${verifiedNama}</strong>. Saldo baru: <strong>${formatRupiah(data.saldo_baru)}</strong>`);
       document.getElementById('topupAmount').value = '';
+      verificationToken = null; // token hanya berlaku untuk satu top-up
     } else {
       showBanner('error', '❌ Gagal', data.message || 'Terjadi kesalahan.');
     }

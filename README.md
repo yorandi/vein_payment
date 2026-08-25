@@ -5,7 +5,7 @@ Network (hasil proyek `palm_vein_models`) ke dalam sistem pembayaran
 berbasis verifikasi telapak tangan.
 
 > ⚠️ **Ini SIMULASI untuk keperluan skripsi/demo, BUKAN sistem pembayaran
-> produksi.** Saldo & akun adalah data dummy lokal (SQLite), tidak
+> produksi.** Saldo & akun adalah data dummy PostgreSQL, tidak
 > terhubung ke sistem keuangan sungguhan apa pun. Belum ada liveness
 > detection maupun mekanisme verifikasi cadangan (PIN) -- ini langkah
 > lanjutan yang sudah direncanakan tapi belum dikerjakan (lihat bagian
@@ -20,15 +20,14 @@ berbasis verifikasi telapak tangan.
        -> [Embedding Network (.tflite)] -> [Cocokkan ke reference_embeddings.npz]
        -> jarak <= threshold?
              |--- TIDAK -> transaksi gagal (dicatat di log)
-             |--- YA -> cek saldo di SQLite
+             |--- YA -> cek saldo di PostgreSQL
                           |--- saldo cukup -> potong saldo, transaksi SUKSES
                           |--- saldo kurang -> transaksi gagal (dicatat di log)
 ```
 
-Setiap percobaan transaksi -- berhasil maupun gagal -- **selalu dicatat**
-ke tabel `transactions` di `payment.db`, termasuk jarak embedding-nya.
-Ini penting untuk analisis nanti (mis. menghitung FAR/FRR riil dari
-penggunaan sistem, bukan cuma dari evaluasi offline).
+Setiap percobaan biometric -- diterima maupun ditolak -- dicatat ke tabel
+`biometric_attempts`. Mutasi saldo yang berhasil dicatat ke `transactions`.
+Log ini dipakai untuk menghitung FAR/FRR dari penggunaan nyata.
 
 ## 2. Struktur folder
 
@@ -67,17 +66,18 @@ sudo apt install -y python3-picamera2 python3-opencv python3-flask
 pip3 install tflite-runtime --break-system-packages
 ```
 
-**c. Isi saldo awal** untuk setiap orang yang sudah terdaftar:
-```bash
-python3 seed_accounts.py --model_dir ./model --saldo_awal 100000
-```
+**c. Siapkan PostgreSQL.** Untuk instalasi baru jalankan
+`migration_simplified_schema_new.sql`. Untuk database yang sudah memakai
+skema tersebut, jalankan `migration_hardening.sql`. Isi `.env` dengan
+`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, dan `DB_PASSWORD`.
 
 **d. Jalankan aplikasi:**
 ```bash
 python3 app.py
 ```
 
-Buka `http://<ip-raspi>:5001` di browser.
+Buka `http://<ip-raspi>:5001` di browser. Pada Raspberry Pi 3B + NoIR v2,
+aplikasi memakai kamera 640x480/20 FPS untuk menjaga respons UI dan inferensi.
 
 ## 4. Cara pakai
 

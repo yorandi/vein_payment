@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% set page = 'merchant' %}
+{% block title %}Saldo Merchant — VeinPay{% endblock %}
+{% block content %}
+<div class="page-wide">
+  <div class="page-hero">
+    <div class="page-hero-title">🏪 Saldo Merchant</div>
+    <div class="page-hero-sub">Total pembayaran sukses yang diterima tiap merchant</div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:0;">Daftar Merchant</div>
+      <button onclick="loadMerchantSaldo()" style="background:none;border:none;color:#1a56db;font-size:13px;font-weight:600;cursor:pointer;">🔄 Refresh</button>
+    </div>
+    <div id="merchantTableWrap"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+async function loadMerchantSaldo() {
+  const wrap = document.getElementById('merchantTableWrap');
+  wrap.innerHTML = '<div class="empty">Memuat...</div>';
+  try {
+    const res = await fetch('/merchant_saldo');
+    const rows = await res.json();
+
+    if (!rows.length) {
+      wrap.innerHTML = '<div class="empty">Belum ada merchant terdaftar.</div>';
+      return;
+    }
+
+    let html = `<table class="tx-table">
+      <tr><th>Merchant</th><th>Total Diterima</th></tr>`;
+    rows.forEach(r => {
+      html += `<tr>
+        <td class="tx-name">🏪 ${r.nama_merchant}</td>
+        <td>${formatRupiah(r.total_diterima)}</td>
+      </tr>`;
+    });
+    html += '</table>';
+    wrap.innerHTML = html;
+  } catch (e) {
+    wrap.innerHTML = '<div class="empty">Gagal memuat data merchant.</div>';
+  }
+}
+
+loadMerchantSaldo();
+</script>
+{% endblock %}

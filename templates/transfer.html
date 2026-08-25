@@ -1,24 +1,24 @@
 {% extends "base.html" %}
-{% set page = 'pay' %}
-{% block title %}Terminal Pembayaran — VeinPay{% endblock %}
+{% set page = 'transfer' %}
+{% block title %}Kirim ke Teman — VeinPay{% endblock %}
 {% block content %}
 <div class="page">
   <div class="page-hero">
-    <div class="page-hero-title">💳 Terminal Pembayaran</div>
-    <div class="page-hero-sub">Pilih merchant, masukkan nominal, lalu scan telapak tangan</div>
+    <div class="page-hero-title">🔁 Kirim ke Teman</div>
+    <div class="page-hero-sub">Pilih penerima, masukkan nominal, lalu scan telapak tangan pengirim</div>
   </div>
 
   <div class="card">
-    <div class="card-title">Pilih Merchant</div>
-    <div id="merchantList" class="merchant-list">
-      <div class="empty">Memuat daftar merchant...</div>
+    <div class="card-title">Pilih Penerima</div>
+    <div id="recipientList" class="merchant-list">
+      <div class="empty">Memuat daftar akun...</div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-title">Nominal Pembayaran</div>
+    <div class="card-title">Nominal Transfer</div>
     <div class="amount-display">
-      <div class="amount-label">Total Tagihan</div>
+      <div class="amount-label">Jumlah Kirim</div>
       <div class="amount-value" id="displayAmount">
         <span class="currency">Rp</span><span id="amountText">0</span>
       </div>
@@ -45,13 +45,13 @@
   </div>
 
   <div class="card">
-    <div class="card-title">Scan Telapak Tangan</div>
+    <div class="card-title">Scan Telapak Tangan Pengirim</div>
     <div class="stream-container" id="streamWrap">
       <img src="/video_feed" alt="kamera">
       <div class="scan-ring" id="scanRing"></div>
       <div class="scan-overlay" id="scanOverlay">Posisikan telapak tangan</div>
     </div>
-    <button class="btn btn-primary" id="btnPay" onclick="doPayment()">🖐 Verifikasi &amp; Bayar</button>
+    <button class="btn btn-primary" id="btnTransfer" onclick="doTransfer()">🖐 Verifikasi &amp; Kirim</button>
   </div>
 
   <div class="result-banner" id="resultBanner">
@@ -65,34 +65,41 @@
 {% block extra_script %}
 <script>
 let amountVal = 0;
-let selectedMerchant = null;
+let selectedRecipient = null;
 
-async function loadMerchants() {
-  const wrap = document.getElementById('merchantList');
+async function loadRecipients() {
+  const wrap = document.getElementById('recipientList');
   try {
-    const res = await fetch('/merchants');
-    const merchants = await res.json();
-    if (!merchants.length) {
-      wrap.innerHTML = '<div class="empty">Belum ada merchant terdaftar.</div>';
+    const res = await fetch('/akun');
+    const accounts = await res.json();
+    if (!accounts.length) {
+      wrap.innerHTML = '<div class="empty">Belum ada akun terdaftar.</div>';
       return;
     }
-    wrap.innerHTML = merchants.map(m => `
-      <div class="merchant-item" onclick="selectMerchant(${m.merchant_id}, this)">
-        <span>🏪 ${m.nama_merchant}</span>
-        <span class="check">✓</span>
-      </div>`).join('');
+    wrap.innerHTML = '';
+    accounts.forEach(a => {
+      const item = document.createElement('div');
+      item.className = 'merchant-item';
+      item.innerHTML = `<span>👤 ${a.nama}</span><span class="check">✓</span>`;
+      // Pakai addEventListener + closure (bukan onclick="..." inline)
+      // supaya nama yang mengandung spasi/tanda kutip tidak merusak
+      // atribut HTML -- itu penyebab tombol dulu gak kepanggil sama
+      // sekali walau keliatan sudah "dipilih".
+      item.addEventListener('click', () => selectRecipient(a.nama, item));
+      wrap.appendChild(item);
+    });
   } catch (e) {
-    wrap.innerHTML = '<div class="empty">Gagal memuat daftar merchant.</div>';
+    wrap.innerHTML = '<div class="empty">Gagal memuat daftar akun.</div>';
   }
 }
 
-function selectMerchant(id, el) {
-  selectedMerchant = id;
-  document.querySelectorAll('.merchant-item').forEach(x => x.classList.remove('selected'));
+function selectRecipient(nama, el) {
+  selectedRecipient = nama;
+  document.querySelectorAll('#recipientList .merchant-item').forEach(x => x.classList.remove('selected'));
   el.classList.add('selected');
 }
 
-loadMerchants();
+loadRecipients();
 
 function keyPress(k) {
   let s = String(amountVal) + k;
@@ -108,11 +115,11 @@ function updateDisplay() {
   document.getElementById('amountText').textContent = amountVal.toLocaleString('id-ID');
 }
 
-async function doPayment() {
-  if (!selectedMerchant) { alert('Pilih merchant dulu.'); return; }
+async function doTransfer() {
+  if (!selectedRecipient) { alert('Pilih penerima dulu.'); return; }
   if (amountVal <= 0) { alert('Masukkan nominal dulu.'); return; }
 
-  const btn = document.getElementById('btnPay');
+  const btn = document.getElementById('btnTransfer');
   const banner = document.getElementById('resultBanner');
   btn.disabled = true;
   banner.className = 'result-banner';
@@ -120,19 +127,19 @@ async function doPayment() {
   setScanRing(document.getElementById('streamWrap'), 'scanning', 'Mengambil frame...');
 
   try {
-    const res = await fetch('/verify_payment', {
+    const res = await fetch('/verify_transfer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jumlah: amountVal, merchant_id: selectedMerchant })
+      body: JSON.stringify({ jumlah: amountVal, target_nama: selectedRecipient })
     });
     const data = await res.json();
 
     if (data.status === 'sukses') {
       setScanRing(document.getElementById('streamWrap'), 'success', '✓ Terverifikasi');
       showBanner('success',
-        '✅ Pembayaran Berhasil',
-        `Atas nama: <strong>${data.nama}</strong> &nbsp;|&nbsp; ${formatRupiah(data.jumlah)}`,
-        `Sisa saldo: ${formatRupiah(data.saldo_baru)} &nbsp;•&nbsp; Jarak: ${data.jarak_final?.toFixed(4)} &nbsp;•&nbsp; Margin: ${data.margin?.toFixed(4)}${buildFrameDetail(data.detail_per_frame)}`
+        '✅ Transfer Berhasil',
+        `Dari: <strong>${data.nama}</strong> ke <strong>${data.target_nama}</strong> &nbsp;|&nbsp; ${formatRupiah(data.jumlah)}`,
+        `Sisa saldo pengirim: ${formatRupiah(data.saldo_baru)} &nbsp;•&nbsp; Jarak: ${data.jarak_final?.toFixed(4)} &nbsp;•&nbsp; Margin: ${data.margin?.toFixed(4)}${buildFrameDetail(data.detail_per_frame)}`
       );
       amountVal = 0; updateDisplay();
     } else if (data.status === 'gagal_verifikasi') {
@@ -143,9 +150,9 @@ async function doPayment() {
         `Jarak: ${data.jarak_final?.toFixed(4)} &nbsp;•&nbsp; Margin: ${data.margin?.toFixed(4)}${buildFrameDetail(data.detail_per_frame)}`
       );
     } else if (data.status === 'error') {
-      // Backend sekarang menggabungkan "saldo tidak cukup", "akun tidak
-      // ditemukan", dan "merchant tidak ditemukan" jadi satu status
-      // umum -- bedakan lewat isi pesan biar tampilan tetap informatif.
+      // Backend menggabungkan "saldo tidak cukup", "akun tidak ditemukan",
+      // dan "kirim ke diri sendiri" jadi satu status umum -- bedakan lewat
+      // isi pesan biar tampilan tetap informatif.
       const isSaldo = (data.message || '').toLowerCase().includes('saldo');
       setScanRing(document.getElementById('streamWrap'), 'error', isSaldo ? '✗ Saldo tidak cukup' : '✗ Gagal');
       showBanner(isSaldo ? 'warning' : 'error',
