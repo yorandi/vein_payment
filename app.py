@@ -9,7 +9,10 @@ Route:
   /history    -> riwayat transaksi
 
 API:
-  POST /verify_payment   -> verifikasi + potong saldo
+  POST /verify_payment   -> verifikasi, lalu menunggu konfirmasi pengguna
+  POST /confirm_payment  -> potong saldo setelah konfirmasi
+  POST /verify_transfer  -> verifikasi, lalu menunggu konfirmasi pengguna
+  POST /confirm_transfer -> kirim saldo setelah konfirmasi
   POST /identify_only    -> identifikasi saja (untuk topup step 1)
   POST /topup            -> tambah saldo (setelah identifikasi)
   POST /start_register   -> mulai sesi registrasi
@@ -83,6 +86,9 @@ verifier_lock = threading.RLock()
 topup_tokens = {}
 topup_token_lock = threading.Lock()
 TOPUP_TOKEN_TTL_SECONDS = 60
+PENDING_TRANSACTION_TTL_SECONDS = 30
+pending_transactions = {}
+pending_transaction_lock = threading.Lock()
 
 
 def issue_topup_token(nama):
@@ -103,6 +109,36 @@ def consume_topup_token(token, nama):
     with topup_token_lock:
         item = topup_tokens.pop(token, None)
     return bool(item and item["expires_at"] > datetime.now(timezone.utc) and item["nama"] == nama)
+
+
+def issue_pending_transaction(kind, payload):
+    """Buat token satu kali; tidak ada saldo yang berubah pada tahap ini."""
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=PENDING_TRANSACTION_TTL_SECONDS)
+    with pending_transaction_lock:
+        now = datetime.now(timezone.utc)
+        expired = [key for key, item in pending_transactions.items() if item["expires_at"] <= now]
+        for key in expired:
+            del pending_transactions[key]
+        pending_transactions[token] = {"kind": kind, "payload": payload, "expires_at": expires_at}
+    return token
+
+
+def consume_pending_transaction(token, kind):
+    if not isinstance(token, str):
+        return None
+    with pending_transaction_lock:
+        item = pending_transactions.pop(token, None)
+    if not item or item["kind"] != kind or item["expires_at"] <= datetime.now(timezone.utc):
+        return None
+    return item["payload"]
+
+
+def cancel_pending_transaction(token):
+    if not isinstance(token, str):
+        return False
+    with pending_transaction_lock:
+        return pending_transactions.pop(token, None) is not None
 
 
 def capture_frame_bgr():
@@ -213,29 +249,34 @@ def verify_payment():
             "detail_per_frame": result.get("detail_per_frame", []),
         })
 
-    try:
-        saldo_baru, trx = db.deduct_balance_for_payment(nama, merchant_id, jumlah)
-    except PaymentError as e:
-        # e.status_code: 404 kalau akun/merchant tidak ditemukan,
-        # 400 kalau saldo tidak cukup -- pesan lengkap ada di e.message,
-        # frontend (pay.html) bisa tampilkan langsung.
-        return jsonify({
-            "status": "error",
-            "nama": nama,
-            "jumlah": jumlah,
-            "saldo": db.get_balance(nama),
-            "jarak_final": jarak,
-            "margin": result.get("margin"),
-            "message": e.message,
-            "detail_per_frame": result.get("detail_per_frame", []),
-        }), e.status_code
-
     return jsonify({
-        "status": "sukses",
-        "nama": nama, "jumlah": jumlah, "saldo_baru": saldo_baru,
+        "status": "menunggu_konfirmasi",
+        "confirmation_token": issue_pending_transaction("payment", {
+            "nama": nama, "merchant_id": merchant_id, "jumlah": jumlah,
+            "jarak_final": jarak, "margin": result.get("margin"),
+            "detail_per_frame": result.get("detail_per_frame", []),
+        }),
+        "nama": nama, "jumlah": jumlah,
         "jarak_final": jarak, "margin": result.get("margin"),
         "detail_per_frame": result.get("detail_per_frame", []),
-        "message": (f"Pembayaran berhasil. Saldo {nama}: Rp{saldo_baru:,.0f}").replace(",", "."),
+        "message": "Scan dikenali. Konfirmasikan identitas sebelum saldo dipotong.",
+    })
+
+
+@app.route("/confirm_payment", methods=["POST"])
+def confirm_payment():
+    payload = consume_pending_transaction((request.get_json(silent=True) or {}).get("confirmation_token"), "payment")
+    if payload is None:
+        return jsonify({"status": "error", "message": "Konfirmasi tidak valid atau sudah kedaluwarsa. Scan ulang."}), 409
+    try:
+        saldo_baru, trx = db.deduct_balance_for_payment(payload["nama"], payload["merchant_id"], payload["jumlah"])
+    except PaymentError as e:
+        return jsonify({"status": "error", "message": e.message}), e.status_code
+    return jsonify({
+        "status": "sukses", "nama": payload["nama"], "jumlah": payload["jumlah"], "saldo_baru": saldo_baru,
+        "jarak_final": payload["jarak_final"], "margin": payload["margin"],
+        "detail_per_frame": payload["detail_per_frame"],
+        "message": (f"Pembayaran berhasil. Saldo {payload['nama']}: Rp{saldo_baru:,.0f}").replace(",", "."),
     })
 
 
@@ -281,28 +322,42 @@ def verify_transfer():
             "message": "Tidak bisa mengirim saldo ke akun sendiri (yang teridentifikasi dari scan sama dengan penerima yang dipilih).",
         }), 400
 
-    try:
-        saldo_baru, trx = db.transfer_balance(nama, target_nama, jumlah)
-    except PaymentError as e:
-        return jsonify({
-            "status": "error",
-            "nama": nama,
-            "target_nama": target_nama,
-            "jumlah": jumlah,
-            "saldo": db.get_balance(nama),
-            "jarak_final": jarak,
-            "margin": result.get("margin"),
-            "message": e.message,
-            "detail_per_frame": result.get("detail_per_frame", []),
-        }), e.status_code
-
     return jsonify({
-        "status": "sukses",
-        "nama": nama, "target_nama": target_nama, "jumlah": jumlah, "saldo_baru": saldo_baru,
+        "status": "menunggu_konfirmasi",
+        "confirmation_token": issue_pending_transaction("transfer", {
+            "nama": nama, "target_nama": target_nama, "jumlah": jumlah,
+            "jarak_final": jarak, "margin": result.get("margin"),
+            "detail_per_frame": result.get("detail_per_frame", []),
+        }),
+        "nama": nama, "target_nama": target_nama, "jumlah": jumlah,
         "jarak_final": jarak, "margin": result.get("margin"),
         "detail_per_frame": result.get("detail_per_frame", []),
-        "message": (f"Transfer berhasil. Saldo {nama}: Rp{saldo_baru:,.0f}").replace(",", "."),
+        "message": "Scan dikenali. Konfirmasikan identitas sebelum saldo dikirim.",
     })
+
+
+@app.route("/confirm_transfer", methods=["POST"])
+def confirm_transfer():
+    payload = consume_pending_transaction((request.get_json(silent=True) or {}).get("confirmation_token"), "transfer")
+    if payload is None:
+        return jsonify({"status": "error", "message": "Konfirmasi tidak valid atau sudah kedaluwarsa. Scan ulang."}), 409
+    try:
+        saldo_baru, trx = db.transfer_balance(payload["nama"], payload["target_nama"], payload["jumlah"])
+    except PaymentError as e:
+        return jsonify({"status": "error", "message": e.message}), e.status_code
+    return jsonify({
+        "status": "sukses", "nama": payload["nama"], "target_nama": payload["target_nama"],
+        "jumlah": payload["jumlah"], "saldo_baru": saldo_baru,
+        "jarak_final": payload["jarak_final"], "margin": payload["margin"],
+        "detail_per_frame": payload["detail_per_frame"],
+        "message": (f"Transfer berhasil. Saldo {payload['nama']}: Rp{saldo_baru:,.0f}").replace(",", "."),
+    })
+
+
+@app.route("/cancel_pending_transaction", methods=["POST"])
+def cancel_pending():
+    canceled = cancel_pending_transaction((request.get_json(silent=True) or {}).get("confirmation_token"))
+    return jsonify({"status": "dibatalkan" if canceled else "tidak_ditemukan"})
 
 
 # ----------------------------------------------------------------

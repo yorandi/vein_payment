@@ -20,9 +20,11 @@ berbasis verifikasi telapak tangan.
        -> [Embedding Network (.tflite)] -> [Cocokkan ke reference_embeddings.npz]
        -> jarak <= threshold?
              |--- TIDAK -> transaksi gagal (dicatat di log)
-             |--- YA -> cek saldo di PostgreSQL
-                          |--- saldo cukup -> potong saldo, transaksi SUKSES
-                          |--- saldo kurang -> transaksi gagal (dicatat di log)
+             `--- YA -> identitas tampil untuk dikonfirmasi (maks. 30 detik)
+                   |--- batal -> tidak ada saldo berubah
+                   `--- konfirmasi -> cek saldo di PostgreSQL
+                                         |--- cukup -> transaksi SUKSES
+                                         `--- kurang -> transaksi gagal (dicatat di log)
 ```
 
 Setiap percobaan biometric -- diterima maupun ditolak -- dicatat ke tabel

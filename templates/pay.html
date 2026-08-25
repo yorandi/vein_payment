@@ -66,6 +66,7 @@
 <script>
 let amountVal = 0;
 let selectedMerchant = null;
+let pendingPaymentToken = null;
 
 async function loadMerchants() {
   const wrap = document.getElementById('merchantList');
@@ -127,7 +128,16 @@ async function doPayment() {
     });
     const data = await res.json();
 
-    if (data.status === 'sukses') {
+    if (data.status === 'menunggu_konfirmasi') {
+      pendingPaymentToken = data.confirmation_token;
+      setScanRing(document.getElementById('streamWrap'), 'success', 'Konfirmasi identitas');
+      showBanner('warning',
+        'Konfirmasi Pembayaran',
+        `Tangan dikenali sebagai <strong>${data.nama}</strong>.<br>Bayar ${formatRupiah(data.jumlah)}?`,
+        `<button class="btn btn-success" onclick="confirmPayment()">Konfirmasi &amp; Bayar</button>
+         <button class="btn btn-outline" style="margin-top:8px" onclick="cancelPendingPayment()">Batal</button>`
+      );
+    } else if (data.status === 'sukses') {
       setScanRing(document.getElementById('streamWrap'), 'success', '✓ Terverifikasi');
       showBanner('success',
         '✅ Pembayaran Berhasil',
@@ -164,6 +174,37 @@ async function doPayment() {
 
   setTimeout(() => setScanRing(document.getElementById('streamWrap'), '', 'Posisikan telapak tangan'), 3000);
   btn.disabled = false;
+}
+
+async function confirmPayment() {
+  if (!pendingPaymentToken) return;
+  const res = await fetch('/confirm_payment', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirmation_token: pendingPaymentToken })
+  });
+  const data = await res.json();
+  pendingPaymentToken = null;
+  if (data.status === 'sukses') {
+    setScanRing(document.getElementById('streamWrap'), 'success', 'Pembayaran berhasil');
+    showBanner('success', 'Pembayaran Berhasil',
+      `Atas nama: <strong>${data.nama}</strong> &nbsp;|&nbsp; ${formatRupiah(data.jumlah)}`,
+      `Sisa saldo: ${formatRupiah(data.saldo_baru)} &nbsp;|&nbsp; Jarak: ${formatScore(data.jarak_final)}`);
+    amountVal = 0; updateDisplay();
+  } else {
+    showBanner('error', 'Pembayaran Tidak Diproses', data.message || 'Konfirmasi gagal.', '');
+  }
+}
+
+async function cancelPendingPayment() {
+  if (pendingPaymentToken) {
+    await fetch('/cancel_pending_transaction', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmation_token: pendingPaymentToken })
+    });
+  }
+  pendingPaymentToken = null;
+  setScanRing(document.getElementById('streamWrap'), '', 'Posisikan telapak tangan');
+  showBanner('warning', 'Dibatalkan', 'Tidak ada saldo yang dipotong.', '');
 }
 
 function showBanner(type, title, body, sub) {

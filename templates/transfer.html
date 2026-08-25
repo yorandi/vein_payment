@@ -66,6 +66,7 @@
 <script>
 let amountVal = 0;
 let selectedRecipient = null;
+let pendingTransferToken = null;
 
 async function loadRecipients() {
   const wrap = document.getElementById('recipientList');
@@ -134,7 +135,16 @@ async function doTransfer() {
     });
     const data = await res.json();
 
-    if (data.status === 'sukses') {
+    if (data.status === 'menunggu_konfirmasi') {
+      pendingTransferToken = data.confirmation_token;
+      setScanRing(document.getElementById('streamWrap'), 'success', 'Konfirmasi identitas');
+      showBanner('warning',
+        'Konfirmasi Transfer',
+        `Tangan dikenali sebagai <strong>${data.nama}</strong>.<br>Kirim ${formatRupiah(data.jumlah)} ke <strong>${data.target_nama}</strong>?`,
+        `<button class="btn btn-success" onclick="confirmTransfer()">Konfirmasi &amp; Kirim</button>
+         <button class="btn btn-outline" style="margin-top:8px" onclick="cancelPendingTransfer()">Batal</button>`
+      );
+    } else if (data.status === 'sukses') {
       setScanRing(document.getElementById('streamWrap'), 'success', '✓ Terverifikasi');
       showBanner('success',
         '✅ Transfer Berhasil',
@@ -171,6 +181,37 @@ async function doTransfer() {
 
   setTimeout(() => setScanRing(document.getElementById('streamWrap'), '', 'Posisikan telapak tangan'), 3000);
   btn.disabled = false;
+}
+
+async function confirmTransfer() {
+  if (!pendingTransferToken) return;
+  const res = await fetch('/confirm_transfer', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirmation_token: pendingTransferToken })
+  });
+  const data = await res.json();
+  pendingTransferToken = null;
+  if (data.status === 'sukses') {
+    setScanRing(document.getElementById('streamWrap'), 'success', 'Transfer berhasil');
+    showBanner('success', 'Transfer Berhasil',
+      `Dari: <strong>${data.nama}</strong> ke <strong>${data.target_nama}</strong> &nbsp;|&nbsp; ${formatRupiah(data.jumlah)}`,
+      `Sisa saldo pengirim: ${formatRupiah(data.saldo_baru)} &nbsp;|&nbsp; Jarak: ${formatScore(data.jarak_final)}`);
+    amountVal = 0; updateDisplay();
+  } else {
+    showBanner('error', 'Transfer Tidak Diproses', data.message || 'Konfirmasi gagal.', '');
+  }
+}
+
+async function cancelPendingTransfer() {
+  if (pendingTransferToken) {
+    await fetch('/cancel_pending_transaction', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmation_token: pendingTransferToken })
+    });
+  }
+  pendingTransferToken = null;
+  setScanRing(document.getElementById('streamWrap'), '', 'Posisikan telapak tangan');
+  showBanner('warning', 'Dibatalkan', 'Tidak ada saldo yang dikirim.', '');
 }
 
 function showBanner(type, title, body, sub) {
