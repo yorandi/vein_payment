@@ -2,10 +2,15 @@
 {% set page = 'transfer' %}
 {% block title %}Kirim ke Teman — VeinPay{% endblock %}
 {% block content %}
-<div class="page">
+<div class="page page-terminal">
   <div class="page-hero">
     <div class="page-hero-title">🔁 Kirim ke Teman</div>
-    <div class="page-hero-sub">Pilih penerima, masukkan nominal, lalu scan telapak tangan pengirim</div>
+    <div class="page-hero-sub">Periksa pengirim, penerima, dan nominal sebelum mengirim.</div>
+  </div>
+  <div class="terminal-steps" aria-label="Tahapan transfer">
+    <div class="terminal-step"><b>1</b>Pilih penerima</div>
+    <div class="terminal-step"><b>2</b>Masukkan nominal</div>
+    <div class="terminal-step"><b>3</b>Scan &amp; konfirmasi</div>
   </div>
 
   <div class="card">
@@ -45,13 +50,14 @@
   </div>
 
   <div class="card">
-    <div class="card-title">Scan Telapak Tangan Pengirim</div>
+    <div class="card-title">Scan &amp; Konfirmasi Transfer</div>
     <div class="stream-container" id="streamWrap">
       <img src="/video_feed" alt="kamera">
       <div class="scan-ring" id="scanRing"></div>
       <div class="scan-overlay" id="scanOverlay">Posisikan telapak tangan</div>
     </div>
-    <button class="btn btn-primary" id="btnTransfer" onclick="doTransfer()">🖐 Verifikasi &amp; Kirim</button>
+    <div class="scan-guide"><span class="scan-guide-dot"></span>Letakkan telapak tangan di tengah kamera dan tahan hingga proses scan selesai.</div>
+    <button class="btn btn-primary btn-large" id="btnTransfer" onclick="doTransfer()">Scan Telapak Tangan</button>
   </div>
 
   <div class="result-banner" id="resultBanner">
@@ -67,6 +73,7 @@
 let amountVal = 0;
 let selectedRecipient = null;
 let pendingTransferToken = null;
+let pendingTransferTimer = null;
 
 async function loadRecipients() {
   const wrap = document.getElementById('recipientList');
@@ -138,12 +145,21 @@ async function doTransfer() {
     if (data.status === 'menunggu_konfirmasi') {
       pendingTransferToken = data.confirmation_token;
       setScanRing(document.getElementById('streamWrap'), 'success', 'Konfirmasi identitas');
-      showBanner('warning',
+      showBanner('confirmation',
         'Konfirmasi Transfer',
-        `Tangan dikenali sebagai <strong>${data.nama}</strong>.<br>Kirim ${formatRupiah(data.jumlah)} ke <strong>${data.target_nama}</strong>?`,
-        `<button class="btn btn-success" onclick="confirmTransfer()">Konfirmasi &amp; Kirim</button>
-         <button class="btn btn-outline" style="margin-top:8px" onclick="cancelPendingTransfer()">Batal</button>`
+        `<div class="confirmation-summary">
+           <div class="confirmation-label">Pengirim teridentifikasi sebagai</div>
+           <div class="confirmation-name">${data.nama}</div>
+           <div class="confirmation-detail">Kirim ke <strong>${data.target_nama}</strong></div>
+           <div class="confirmation-amount">${formatRupiah(data.jumlah)}</div>
+           <div class="confirmation-timer">Waktu konfirmasi: <span id="confirmationCountdown">30</span> detik</div>
+         </div>`,
+        `<div class="confirmation-actions">
+           <button class="btn btn-outline" onclick="cancelPendingTransfer()">Batal</button>
+           <button class="btn btn-success" onclick="confirmTransfer()">Konfirmasi &amp; Kirim</button>
+         </div>`
       );
+      startPendingTransferCountdown();
     } else if (data.status === 'sukses') {
       setScanRing(document.getElementById('streamWrap'), 'success', '✓ Terverifikasi');
       showBanner('success',
@@ -179,12 +195,34 @@ async function doTransfer() {
     showBanner('error', '❌ Koneksi Gagal', 'Tidak bisa menghubungi server.', '');
   }
 
-  setTimeout(() => setScanRing(document.getElementById('streamWrap'), '', 'Posisikan telapak tangan'), 3000);
+  setTimeout(() => {
+    if (!pendingTransferToken) setScanRing(document.getElementById('streamWrap'), '', 'Posisikan telapak tangan');
+  }, 3000);
   btn.disabled = false;
+}
+
+function clearPendingTransferCountdown() {
+  if (pendingTransferTimer) clearInterval(pendingTransferTimer);
+  pendingTransferTimer = null;
+}
+
+function startPendingTransferCountdown() {
+  clearPendingTransferCountdown();
+  let remaining = 30;
+  pendingTransferTimer = setInterval(() => {
+    remaining -= 1;
+    const label = document.getElementById('confirmationCountdown');
+    if (label) label.textContent = remaining;
+    if (remaining <= 0) {
+      clearPendingTransferCountdown();
+      if (pendingTransferToken) cancelPendingTransfer(true);
+    }
+  }, 1000);
 }
 
 async function confirmTransfer() {
   if (!pendingTransferToken) return;
+  clearPendingTransferCountdown();
   const res = await fetch('/confirm_transfer', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ confirmation_token: pendingTransferToken })
@@ -198,11 +236,13 @@ async function confirmTransfer() {
       `Sisa saldo pengirim: ${formatRupiah(data.saldo_baru)} &nbsp;|&nbsp; Jarak: ${formatScore(data.jarak_final)}`);
     amountVal = 0; updateDisplay();
   } else {
+    setScanRing(document.getElementById('streamWrap'), 'error', 'Transfer tidak diproses');
     showBanner('error', 'Transfer Tidak Diproses', data.message || 'Konfirmasi gagal.', '');
   }
 }
 
-async function cancelPendingTransfer() {
+async function cancelPendingTransfer(expired = false) {
+  clearPendingTransferCountdown();
   if (pendingTransferToken) {
     await fetch('/cancel_pending_transaction', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -211,7 +251,8 @@ async function cancelPendingTransfer() {
   }
   pendingTransferToken = null;
   setScanRing(document.getElementById('streamWrap'), '', 'Posisikan telapak tangan');
-  showBanner('warning', 'Dibatalkan', 'Tidak ada saldo yang dikirim.', '');
+  showBanner('warning', expired ? 'Waktu Konfirmasi Habis' : 'Dibatalkan',
+    expired ? 'Scan ulang untuk memulai transfer baru.' : 'Tidak ada saldo yang dikirim.', '');
 }
 
 function showBanner(type, title, body, sub) {

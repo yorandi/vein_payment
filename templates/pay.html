@@ -2,10 +2,15 @@
 {% set page = 'pay' %}
 {% block title %}Terminal Pembayaran — VeinPay{% endblock %}
 {% block content %}
-<div class="page">
+<div class="page page-terminal">
   <div class="page-hero">
     <div class="page-hero-title">💳 Terminal Pembayaran</div>
-    <div class="page-hero-sub">Pilih merchant, masukkan nominal, lalu scan telapak tangan</div>
+    <div class="page-hero-sub">Periksa detail transaksi sebelum mengonfirmasi pembayaran.</div>
+  </div>
+  <div class="terminal-steps" aria-label="Tahapan pembayaran">
+    <div class="terminal-step"><b>1</b>Pilih merchant</div>
+    <div class="terminal-step"><b>2</b>Masukkan nominal</div>
+    <div class="terminal-step"><b>3</b>Scan &amp; konfirmasi</div>
   </div>
 
   <div class="card">
@@ -45,13 +50,14 @@
   </div>
 
   <div class="card">
-    <div class="card-title">Scan Telapak Tangan</div>
+    <div class="card-title">Scan &amp; Konfirmasi Pembayaran</div>
     <div class="stream-container" id="streamWrap">
       <img src="/video_feed" alt="kamera">
       <div class="scan-ring" id="scanRing"></div>
       <div class="scan-overlay" id="scanOverlay">Posisikan telapak tangan</div>
     </div>
-    <button class="btn btn-primary" id="btnPay" onclick="doPayment()">🖐 Verifikasi &amp; Bayar</button>
+    <div class="scan-guide"><span class="scan-guide-dot"></span>Letakkan telapak tangan di tengah kamera dan tahan hingga proses scan selesai.</div>
+    <button class="btn btn-primary btn-large" id="btnPay" onclick="doPayment()">Scan Telapak Tangan</button>
   </div>
 
   <div class="result-banner" id="resultBanner">
@@ -67,6 +73,7 @@
 let amountVal = 0;
 let selectedMerchant = null;
 let pendingPaymentToken = null;
+let pendingPaymentTimer = null;
 
 async function loadMerchants() {
   const wrap = document.getElementById('merchantList');
@@ -131,12 +138,21 @@ async function doPayment() {
     if (data.status === 'menunggu_konfirmasi') {
       pendingPaymentToken = data.confirmation_token;
       setScanRing(document.getElementById('streamWrap'), 'success', 'Konfirmasi identitas');
-      showBanner('warning',
+      showBanner('confirmation',
         'Konfirmasi Pembayaran',
-        `Tangan dikenali sebagai <strong>${data.nama}</strong>.<br>Bayar ${formatRupiah(data.jumlah)}?`,
-        `<button class="btn btn-success" onclick="confirmPayment()">Konfirmasi &amp; Bayar</button>
-         <button class="btn btn-outline" style="margin-top:8px" onclick="cancelPendingPayment()">Batal</button>`
+        `<div class="confirmation-summary">
+           <div class="confirmation-label">Tangan teridentifikasi sebagai</div>
+           <div class="confirmation-name">${data.nama}</div>
+           <div class="confirmation-detail">Pembayaran ke merchant terpilih</div>
+           <div class="confirmation-amount">${formatRupiah(data.jumlah)}</div>
+           <div class="confirmation-timer">Waktu konfirmasi: <span id="confirmationCountdown">30</span> detik</div>
+         </div>`,
+        `<div class="confirmation-actions">
+           <button class="btn btn-outline" onclick="cancelPendingPayment()">Batal</button>
+           <button class="btn btn-success" onclick="confirmPayment()">Konfirmasi &amp; Bayar</button>
+         </div>`
       );
+      startPendingPaymentCountdown();
     } else if (data.status === 'sukses') {
       setScanRing(document.getElementById('streamWrap'), 'success', '✓ Terverifikasi');
       showBanner('success',
@@ -172,12 +188,34 @@ async function doPayment() {
     showBanner('error', '❌ Koneksi Gagal', 'Tidak bisa menghubungi server.', '');
   }
 
-  setTimeout(() => setScanRing(document.getElementById('streamWrap'), '', 'Posisikan telapak tangan'), 3000);
+  setTimeout(() => {
+    if (!pendingPaymentToken) setScanRing(document.getElementById('streamWrap'), '', 'Posisikan telapak tangan');
+  }, 3000);
   btn.disabled = false;
+}
+
+function clearPendingPaymentCountdown() {
+  if (pendingPaymentTimer) clearInterval(pendingPaymentTimer);
+  pendingPaymentTimer = null;
+}
+
+function startPendingPaymentCountdown() {
+  clearPendingPaymentCountdown();
+  let remaining = 30;
+  pendingPaymentTimer = setInterval(() => {
+    remaining -= 1;
+    const label = document.getElementById('confirmationCountdown');
+    if (label) label.textContent = remaining;
+    if (remaining <= 0) {
+      clearPendingPaymentCountdown();
+      if (pendingPaymentToken) cancelPendingPayment(true);
+    }
+  }, 1000);
 }
 
 async function confirmPayment() {
   if (!pendingPaymentToken) return;
+  clearPendingPaymentCountdown();
   const res = await fetch('/confirm_payment', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ confirmation_token: pendingPaymentToken })
@@ -191,11 +229,13 @@ async function confirmPayment() {
       `Sisa saldo: ${formatRupiah(data.saldo_baru)} &nbsp;|&nbsp; Jarak: ${formatScore(data.jarak_final)}`);
     amountVal = 0; updateDisplay();
   } else {
+    setScanRing(document.getElementById('streamWrap'), 'error', 'Pembayaran tidak diproses');
     showBanner('error', 'Pembayaran Tidak Diproses', data.message || 'Konfirmasi gagal.', '');
   }
 }
 
-async function cancelPendingPayment() {
+async function cancelPendingPayment(expired = false) {
+  clearPendingPaymentCountdown();
   if (pendingPaymentToken) {
     await fetch('/cancel_pending_transaction', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -204,7 +244,8 @@ async function cancelPendingPayment() {
   }
   pendingPaymentToken = null;
   setScanRing(document.getElementById('streamWrap'), '', 'Posisikan telapak tangan');
-  showBanner('warning', 'Dibatalkan', 'Tidak ada saldo yang dipotong.', '');
+  showBanner('warning', expired ? 'Waktu Konfirmasi Habis' : 'Dibatalkan',
+    expired ? 'Scan ulang untuk memulai pembayaran baru.' : 'Tidak ada saldo yang dipotong.', '');
 }
 
 function showBanner(type, title, body, sub) {
