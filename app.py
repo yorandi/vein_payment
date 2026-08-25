@@ -28,6 +28,7 @@ import time
 import threading
 import secrets
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import config  # noqa: F401 -- pastikan .env sudah dimuat
 from verify import PalmVeinVerifier
@@ -39,7 +40,7 @@ app = Flask(__name__)
 app.register_blueprint(payment_bp, url_prefix="/api")
 
 
-MODEL_DIR  = "./model"
+MODEL_DIR  = str(Path(__file__).resolve().with_name("model"))
 # Nilai ini adalah operating point lama dengan FAR sekitar 1%. Jangan ubah
 # tanpa evaluasi ulang menggunakan pipeline multiframe yang sama.
 THRESHOLD  = 0.2037

@@ -79,6 +79,28 @@ python3 app.py
 Buka `http://<ip-raspi>:5001` di browser. Pada Raspberry Pi 3B + NoIR v2,
 aplikasi memakai kamera 640x480/20 FPS untuk menjaga respons UI dan inferensi.
 
+### Deployment Raspberry Pi 3B + Camera Module NoIR v2
+
+Model biometric tidak disimpan di Git. Salin dua berkas berikut secara aman ke
+`model/` pada Pi: `embedding_network.tflite` dan `reference_embeddings.npz`.
+
+```bash
+git clone <URL_REPOSITORY> ~/vein_payment
+cd ~/vein_payment
+chmod +x deploy/install_raspi.sh
+./deploy/install_raspi.sh
+sudo install -d -m 750 /etc/veinpay
+sudo install -m 640 deploy/veinpay.env.example /etc/veinpay/veinpay.env
+sudo nano /etc/veinpay/veinpay.env
+sudo install -m 644 deploy/veinpay.service /etc/systemd/system/veinpay.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now veinpay
+```
+
+Periksa kamera lebih dulu dengan `rpicam-hello` (Bookworm) atau
+`libcamera-hello` (Bullseye), lalu cek aplikasi memakai
+`sudo systemctl status veinpay` dan `journalctl -u veinpay -f`.
+
 ## 4. Cara pakai
 
 1. Isi nominal pembayaran (contoh: 25000)

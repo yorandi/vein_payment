@@ -1,0 +1,20 @@
+[Unit]
+Description=VeinPay Palm Vein Demo
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/vein_payment
+EnvironmentFile=/etc/veinpay/veinpay.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/pi/vein_payment/.venv/bin/python app.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

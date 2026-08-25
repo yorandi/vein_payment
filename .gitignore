@@ -3,5 +3,11 @@ venv/
 __pycache__/
 *.py[cod]
 payment.db
-model/*.bak_*
-model/reference_embeddings.npz
+trash/
+backup_sebelum_*.sql
+add_balance_after.sql
+reset_all.py
+models.py
+pg_database.py
+model/*
+!model/.gitkeep
