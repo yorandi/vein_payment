@@ -375,8 +375,8 @@ def start_register():
     if not safe_nama:
         return jsonify({"error": "Nama tidak valid"}), 400
 
-    if db.get_user_id(safe_nama) is not None:
-        return jsonify({"error": f"Akun '{safe_nama}' sudah ada. Hapus/nonaktifkan akun lama lewat admin sebelum mendaftar ulang."}), 409
+    if db.get_active_user_id(safe_nama) is not None:
+        return jsonify({"error": f"Akun '{safe_nama}' masih aktif. Hapus/nonaktifkan akun tersebut sebelum mendaftar ulang."}), 409
     with verifier_lock:
         if verifier.has_person(safe_nama):
             return jsonify({"error": f"Template biometric '{safe_nama}' sudah ada. Jangan menimpa template yang ada."}), 409

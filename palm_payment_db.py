@@ -65,6 +65,17 @@ def get_user_id(nama):
         return row["user_id"] if row else None
 
 
+def get_active_user_id(nama):
+    """Return user_id hanya bila akun aktif; dipakai sebagai preflight enrollment."""
+    with db_transaction() as cur:
+        cur.execute(
+            "SELECT user_id FROM users WHERE nama = %s AND is_active = TRUE",
+            (nama,),
+        )
+        row = cur.fetchone()
+        return row["user_id"] if row else None
+
+
 def get_balance(nama):
     """Return saldo (float) atau None kalau akun tidak ditemukan."""
     with db_transaction() as cur:
@@ -316,7 +327,9 @@ def log_biometric_attempt(candidate_name, distance, margin, threshold, matched, 
 # ---------------------------------------------------------------------
 def seed_account(nama, saldo_awal=100000, embedding_vector=None):
     """
-    Buat user + account baru saat registrasi orang baru. Kalau
+    Buat user + account baru, atau aktifkan kembali user yang sebelumnya
+    dihapus secara soft-delete. Pada re-enrollment, saldo akun diatur ke
+    saldo_awal baru dan template lama tetap nonaktif sebagai audit. Kalau
     embedding_vector diberikan (hasil rata-rata dari
     verifier.register_new_person), disimpan juga sebagai baris audit di
     palm_templates -- pencocokan biometrik aktual tetap lewat
@@ -324,17 +337,30 @@ def seed_account(nama, saldo_awal=100000, embedding_vector=None):
     riwayat pendaftaran.
     """
     with db_transaction() as cur:
-        cur.execute("SELECT user_id FROM users WHERE nama = %s", (nama,))
-        if cur.fetchone() is not None:
-            raise PaymentError(f"Akun '{nama}' sudah ada")
-
-        cur.execute("INSERT INTO users (nama) VALUES (%s) RETURNING user_id", (nama,))
-        user_id = cur.fetchone()["user_id"]
-
         cur.execute(
-            "INSERT INTO accounts (user_id, saldo) VALUES (%s, %s)",
-            (user_id, saldo_awal),
+            "SELECT user_id, is_active FROM users WHERE nama = %s FOR UPDATE",
+            (nama,),
         )
+        existing_user = cur.fetchone()
+        if existing_user is None:
+            cur.execute("INSERT INTO users (nama) VALUES (%s) RETURNING user_id", (nama,))
+            user_id = cur.fetchone()["user_id"]
+            cur.execute(
+                "INSERT INTO accounts (user_id, saldo) VALUES (%s, %s)",
+                (user_id, saldo_awal),
+            )
+        else:
+            if existing_user["is_active"]:
+                raise PaymentError(f"Akun '{nama}' sudah aktif")
+            user_id = existing_user["user_id"]
+            cur.execute(
+                "UPDATE users SET is_active = TRUE, deleted_at = NULL WHERE user_id = %s",
+                (user_id,),
+            )
+            cur.execute(
+                "UPDATE accounts SET saldo = %s WHERE user_id = %s",
+                (saldo_awal, user_id),
+            )
 
         if embedding_vector is not None:
             cur.execute(
