@@ -543,9 +543,15 @@ def riwayat():
 def akun():
     return jsonify(db.list_accounts())
 
-@app.route("/merchants")
+@app.route("/merchants", methods=["GET", "POST"])
 def merchants():
-    """Daftar merchant untuk layar pemilihan sebelum bayar (pay.html)."""
+    """Daftar dan tambah UMKM yang tersedia pada terminal pembayaran."""
+    if request.method == "POST":
+        try:
+            merchant = db.create_merchant((request.get_json(silent=True) or {}).get("nama_merchant"))
+        except PaymentError as exc:
+            return jsonify({"status": "error", "message": exc.message}), exc.status_code
+        return jsonify({"status": "sukses", "merchant": merchant}), 201
     return jsonify(db.list_merchants())
 
 @app.route("/merchant_saldo")

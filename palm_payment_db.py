@@ -115,6 +115,38 @@ def list_merchants():
     return [{"merchant_id": r["merchant_id"], "nama_merchant": r["nama_merchant"]} for r in rows]
 
 
+def create_merchant(nama_merchant):
+    """Tambah UMKM/merchant baru dan kembalikan data yang tersimpan.
+
+    Nama dibandingkan tanpa membedakan huruf besar-kecil agar pilihan
+    merchant tidak membingungkan dan tidak ada UMKM ganda.
+    """
+    if not isinstance(nama_merchant, str):
+        raise PaymentError("Nama UMKM wajib diisi")
+    nama_merchant = nama_merchant.strip()
+    if not nama_merchant:
+        raise PaymentError("Nama UMKM wajib diisi")
+    if len(nama_merchant) > 100:
+        raise PaymentError("Nama UMKM maksimal 100 karakter")
+
+    with db_transaction() as cur:
+        # Serialisasi pendaftaran nama yang sama tanpa mengubah skema DB.
+        # Ini menutup race condition antara SELECT duplikasi dan INSERT.
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext(LOWER(%s)))", (nama_merchant,))
+        cur.execute(
+            "SELECT merchant_id FROM merchants WHERE LOWER(nama_merchant) = LOWER(%s)",
+            (nama_merchant,),
+        )
+        if cur.fetchone() is not None:
+            raise PaymentError("UMKM dengan nama tersebut sudah terdaftar", 409)
+        cur.execute(
+            "INSERT INTO merchants (nama_merchant) VALUES (%s) RETURNING merchant_id, nama_merchant",
+            (nama_merchant,),
+        )
+        row = cur.fetchone()
+    return {"merchant_id": row["merchant_id"], "nama_merchant": row["nama_merchant"]}
+
+
 def list_merchants_with_balance():
     """
     Return list of {'merchant_id', 'nama_merchant', 'total_diterima'} untuk

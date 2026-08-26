@@ -4,8 +4,17 @@
 {% block content %}
 <div class="page-wide">
   <div class="page-hero">
-    <div class="page-hero-title">🏪 Saldo Merchant</div>
-    <div class="page-hero-sub">Total pembayaran sukses yang diterima tiap merchant</div>
+    <div class="page-hero-title">Manajemen UMKM</div>
+    <div class="page-hero-sub">Tambahkan UMKM agar dapat menerima pembayaran VeinPay.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Tambah UMKM Baru</div>
+    <label class="form-label" for="merchantName">Nama usaha / UMKM</label>
+    <input class="form-input" id="merchantName" maxlength="100" autocomplete="off"
+           placeholder="Contoh: Warung Makan Bu Sari" onkeydown="if(event.key === 'Enter') addMerchant()">
+    <button class="btn btn-primary" id="btnAddMerchant" onclick="addMerchant()">Tambah UMKM</button>
+    <div class="result-banner" id="merchantResult"></div>
   </div>
 
   <div class="card">
@@ -36,7 +45,7 @@ async function loadMerchantSaldo() {
       <tr><th>Merchant</th><th>Total Diterima</th></tr>`;
     rows.forEach(r => {
       html += `<tr>
-        <td class="tx-name">🏪 ${r.nama_merchant}</td>
+        <td class="tx-name">${escapeHtml(r.nama_merchant)}</td>
         <td>${formatRupiah(r.total_diterima)}</td>
       </tr>`;
     });
@@ -44,6 +53,50 @@ async function loadMerchantSaldo() {
     wrap.innerHTML = html;
   } catch (e) {
     wrap.innerHTML = '<div class="empty">Gagal memuat data merchant.</div>';
+  }
+}
+
+function escapeHtml(value) {
+  const div = document.createElement('div');
+  div.textContent = value;
+  return div.innerHTML;
+}
+
+function showMerchantResult(type, message) {
+  const result = document.getElementById('merchantResult');
+  result.className = 'result-banner show ' + type;
+  result.textContent = message;
+}
+
+async function addMerchant() {
+  const input = document.getElementById('merchantName');
+  const button = document.getElementById('btnAddMerchant');
+  const nama_merchant = input.value.trim();
+  if (!nama_merchant) {
+    showMerchantResult('error', 'Masukkan nama UMKM terlebih dahulu.');
+    input.focus();
+    return;
+  }
+
+  button.disabled = true;
+  try {
+    const res = await fetch('/merchants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nama_merchant })
+    });
+    const data = await res.json();
+    if (!res.ok || data.status !== 'sukses') {
+      showMerchantResult('error', data.message || 'UMKM gagal ditambahkan.');
+      return;
+    }
+    input.value = '';
+    showMerchantResult('success', `UMKM "${data.merchant.nama_merchant}" berhasil ditambahkan dan siap dipilih pada terminal pembayaran.`);
+    loadMerchantSaldo();
+  } catch (e) {
+    showMerchantResult('error', 'Tidak dapat menghubungi server.');
+  } finally {
+    button.disabled = false;
   }
 }
 
