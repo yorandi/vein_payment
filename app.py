@@ -246,7 +246,6 @@ def verify_payment():
             "jarak_final": jarak,
             "margin": result.get("margin"),
             "alasan_tolak": result.get("alasan_tolak"),
-            "detail_per_frame": result.get("detail_per_frame", []),
         })
 
     return jsonify({
@@ -254,11 +253,9 @@ def verify_payment():
         "confirmation_token": issue_pending_transaction("payment", {
             "nama": nama, "merchant_id": merchant_id, "jumlah": jumlah,
             "jarak_final": jarak, "margin": result.get("margin"),
-            "detail_per_frame": result.get("detail_per_frame", []),
         }),
         "nama": nama, "jumlah": jumlah,
         "jarak_final": jarak, "margin": result.get("margin"),
-        "detail_per_frame": result.get("detail_per_frame", []),
         "message": "Scan dikenali. Konfirmasikan identitas sebelum saldo dipotong.",
     })
 
@@ -275,7 +272,6 @@ def confirm_payment():
     return jsonify({
         "status": "sukses", "nama": payload["nama"], "jumlah": payload["jumlah"], "saldo_baru": saldo_baru,
         "jarak_final": payload["jarak_final"], "margin": payload["margin"],
-        "detail_per_frame": payload["detail_per_frame"],
         "message": (f"Pembayaran berhasil. Saldo {payload['nama']}: Rp{saldo_baru:,.0f}").replace(",", "."),
     })
 
@@ -312,7 +308,6 @@ def verify_transfer():
             "jarak_final": jarak,
             "margin": result.get("margin"),
             "alasan_tolak": result.get("alasan_tolak"),
-            "detail_per_frame": result.get("detail_per_frame", []),
         })
 
     if nama == target_nama:
@@ -327,11 +322,9 @@ def verify_transfer():
         "confirmation_token": issue_pending_transaction("transfer", {
             "nama": nama, "target_nama": target_nama, "jumlah": jumlah,
             "jarak_final": jarak, "margin": result.get("margin"),
-            "detail_per_frame": result.get("detail_per_frame", []),
         }),
         "nama": nama, "target_nama": target_nama, "jumlah": jumlah,
         "jarak_final": jarak, "margin": result.get("margin"),
-        "detail_per_frame": result.get("detail_per_frame", []),
         "message": "Scan dikenali. Konfirmasikan identitas sebelum saldo dikirim.",
     })
 
@@ -349,7 +342,6 @@ def confirm_transfer():
         "status": "sukses", "nama": payload["nama"], "target_nama": payload["target_nama"],
         "jumlah": payload["jumlah"], "saldo_baru": saldo_baru,
         "jarak_final": payload["jarak_final"], "margin": payload["margin"],
-        "detail_per_frame": payload["detail_per_frame"],
         "message": (f"Transfer berhasil. Saldo {payload['nama']}: Rp{saldo_baru:,.0f}").replace(",", "."),
     })
 

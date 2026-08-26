@@ -19,12 +19,6 @@ except ImportError:
     from tensorflow.lite.python import interpreter as tflite
 
 IMG_SIZE = (128, 128)
-# Batas ini hanya menolak frame yang nyaris kosong/gelap total. Nilai lebih
-# ketat harus dikalibrasi dari data kamera NoIR v2 sendiri, bukan ditebak.
-MIN_FRAME_BRIGHTNESS = 3.0
-MAX_FRAME_BRIGHTNESS = 252.0
-MIN_FRAME_CONTRAST = 2.0
-MIN_FRAME_SHARPNESS = 1.0
 
 
 class PalmVeinVerifier:
@@ -71,16 +65,6 @@ class PalmVeinVerifier:
         self.interpreter.invoke()
         return self.interpreter.get_tensor(self.output_details[0]["index"])[0]
 
-    @staticmethod
-    def frame_quality(frame_bgr):
-        """Metrik ringan untuk mendeteksi frame kosong/gelap total."""
-        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        return (
-            float(gray.mean()),
-            float(gray.std()),
-            float(cv2.Laplacian(gray, cv2.CV_64F).var()),
-        )
-
     def has_person(self, nama):
         with self._reference_lock:
             return nama in self.names
@@ -126,59 +110,18 @@ class PalmVeinVerifier:
         if not self.names:
             return {
                 "nama": None, "jarak_final": None, "margin": None,
-                "cocok": False, "detail_per_frame": [], "strategy": strategy,
+                "cocok": False, "strategy": strategy,
                 "alasan_tolak": "belum ada template terdaftar",
             }
 
-        # Tolak hanya frame yang praktis kosong/gelap total. Camera NoIR v2
-        # dapat menghasilkan kontras lebih rendah dari kamera RGB biasa,
-        # sehingga batas tajam generik tidak boleh menjadi hard gate.
-        accepted_frames = []
-        rejected_count = 0
-        quality_details = []
-        for frame in frames_bgr:
-            brightness, contrast, sharpness = self.frame_quality(frame)
-            accepted = (
-                MIN_FRAME_BRIGHTNESS <= brightness <= MAX_FRAME_BRIGHTNESS
-                and contrast >= MIN_FRAME_CONTRAST
-                and sharpness >= MIN_FRAME_SHARPNESS
-            )
-            quality_details.append({
-                "brightness": round(brightness, 1),
-                "contrast": round(contrast, 2),
-                "sharpness": round(sharpness, 2),
-                "accepted": accepted,
-            })
-            if accepted:
-                accepted_frames.append(frame)
-            else:
-                rejected_count += 1
-        if len(accepted_frames) < max(3, len(frames_bgr) - 2):
-            return {
-                "nama": None, "jarak_final": None, "margin": None,
-                "cocok": False, "detail_per_frame": [], "strategy": strategy,
-                "quality_per_frame": quality_details,
-                "alasan_tolak": f"kualitas frame rendah ({rejected_count}/{len(frames_bgr)} frame ditolak)",
-            }
+        # Semua frame digunakan langsung pada tahap eksperimen. Tidak ada
+        # hard gate kualitas yang dapat menggagalkan scan dengan pesan 5/5.
+        embeddings = np.array([self.get_embedding(frame) for frame in frames_bgr])
 
-        # hitung embedding semua frame yang lolos kualitas
-        embeddings = np.array([self.get_embedding(frame) for frame in accepted_frames])
-
-        # detail per frame untuk keperluan logging/UI
         all_distances = np.array([
             np.linalg.norm(self.vectors - emb, axis=1)
             for emb in embeddings
         ])  # shape: (n_frames, n_candidates)
-
-        detail_per_frame = []
-        for i, dists in enumerate(all_distances):
-            best_idx = int(np.argmin(dists))
-            detail_per_frame.append({
-                "frame": i + 1,
-                "kandidat": str(self.names[best_idx]),
-                "jarak": round(float(dists[best_idx]), 4),
-                "cocok_frame": float(dists[best_idx]) <= self.threshold,
-            })
 
         # ----------------------------------------------------------------
         # Pilih strategi agregasi
@@ -213,7 +156,6 @@ class PalmVeinVerifier:
                     "jarak_final": round(float(all_distances.mean(axis=0)[best_idx]), 4),
                     "cocok": False,
                     "margin": None,
-                    "detail_per_frame": detail_per_frame,
                     "strategy": strategy,
                     "alasan_tolak": "tidak ada frame yang cocok",
                 }
@@ -236,7 +178,6 @@ class PalmVeinVerifier:
                 "votes": votes,
                 "votes_menang": votes[pemenang],
                 "total_frames": len(frames_bgr),
-                "detail_per_frame": detail_per_frame,
                 "strategy": strategy,
             }
             # Guard yang sama: kalau cuma 1 orang terdaftar, margin tidak
@@ -283,7 +224,6 @@ class PalmVeinVerifier:
             "jarak_kandidat_kedua": jarak_kedua,
             "margin": margin,
             "cocok": cocok,
-            "detail_per_frame": detail_per_frame,
             "strategy": strategy,
         }
         if alasan_tolak:
