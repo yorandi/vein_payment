@@ -161,7 +161,7 @@ def log_verification(result, purpose):
         db.log_biometric_attempt(
             result.get("nama"), result.get("jarak_final"), result.get("margin"),
             verifier.threshold, result.get("cocok", False), purpose,
-            result.get("alasan_tolak"),
+            result.get("alasan_tolak"), result.get("jarak_kandidat_kedua"), SCAN_FRAMES,
         )
     except Exception as exc:
         app.logger.error("Gagal menyimpan biometric attempt: %s", exc)

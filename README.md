@@ -28,7 +28,9 @@ berbasis verifikasi telapak tangan.
 ```
 
 Setiap percobaan biometric -- diterima maupun ditolak -- dicatat ke tabel
-`biometric_attempts`. Mutasi saldo yang berhasil dicatat ke `transactions`.
+`biometric_attempts` dan `scan_logs`. Kolom `scan_logs.vector_distance`
+menyimpan jarak Euclidean embedding terhadap kandidat terdekat. Mutasi saldo
+yang berhasil dicatat ke `transactions`.
 Log ini dipakai untuk menghitung FAR/FRR dari penggunaan nyata.
 
 ## 2. Struktur folder
@@ -70,7 +72,9 @@ pip3 install tflite-runtime --break-system-packages
 
 **c. Siapkan PostgreSQL.** Untuk instalasi baru jalankan
 `migration_simplified_schema_new.sql`. Untuk database yang sudah memakai
-skema tersebut, jalankan `migration_hardening.sql`. Isi `.env` dengan
+skema tersebut, jalankan `migration_hardening.sql`. Untuk menambahkan tabel
+audit scan pada database yang sudah berjalan, jalankan `migration_scan_logs.sql`.
+Isi `.env` dengan
 `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, dan `DB_PASSWORD`.
 
 **d. Jalankan aplikasi:**

@@ -12,12 +12,9 @@ sistem -- bukan dua implementasi terpisah seperti sebelumnya.
 Perbedaan penting dibanding pg_database.py (versi lama, SQLAlchemy):
 - User dicari lewat kolom users.nama (skema baru tidak punya full_name).
 - Pembayaran sekarang WAJIB menyertakan merchant_id.
-- Tidak ada lagi tabel scan_logs terpisah. Percobaan verifikasi yang
-  GAGAL DIKENALI (nama tidak match sama sekali) tidak dicatat ke DB,
-  karena tidak ada account_id valid untuk dihubungkan (kolom account_id
-  di transactions bersifat NOT NULL) -- sama seperti perilaku
-  /api/payment di payment_routes.py, yang juga tidak mencatat apa pun
-  kalau validasi gagal sebelum baris transaksi dibuat.
+- Setiap verifikasi dicatat di `biometric_attempts` dan `scan_logs`, termasuk
+  ketika kandidat tidak cocok. Tabel scan_logs menyimpan jarak vektor untuk
+  evaluasi eksperimen tanpa bergantung pada tabel transactions.
 """
 
 import pickle
@@ -336,8 +333,11 @@ def get_recent_transactions(limit=50):
     ]
 
 
-def log_biometric_attempt(candidate_name, distance, margin, threshold, matched, purpose, reason=None):
-    """Simpan semua keputusan biometric, termasuk penolakan, untuk evaluasi FAR/FRR."""
+def log_biometric_attempt(
+    candidate_name, distance, margin, threshold, matched, purpose, reason=None,
+    second_distance=None, frame_count=None,
+):
+    """Simpan setiap scan ke audit FAR/FRR dan tabel scan_logs eksperimen."""
     with db_transaction() as cur:
         user_id = None
         if candidate_name:
@@ -351,6 +351,19 @@ def log_biometric_attempt(candidate_name, distance, margin, threshold, matched, 
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (user_id, candidate_name, distance, margin, threshold, matched, purpose, reason),
+        )
+        cur.execute(
+            """
+            INSERT INTO scan_logs
+                (candidate_user_id, candidate_name, vector_distance,
+                 second_vector_distance, margin, threshold, matched,
+                 purpose, frame_count, rejection_reason)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                user_id, candidate_name, distance, second_distance, margin,
+                threshold, matched, purpose, frame_count, reason,
+            ),
         )
 
 
