@@ -11,6 +11,7 @@ class ScanLogTests(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS scan_logs", source)
         self.assertIn("vector_distance        DOUBLE PRECISION", source)
         self.assertIn("second_vector_distance DOUBLE PRECISION", source)
+        self.assertIn("ALTER TABLE scan_logs ADD COLUMN IF NOT EXISTS vector_distance", source)
 
     def test_each_verification_writes_scan_log(self):
         source = Path("palm_payment_db.py").read_text(encoding="utf-8")
